@@ -1,0 +1,51 @@
+# /etc/systemd/system/chatbot-worker.service
+#
+# Background worker — handles ingestion jobs (PDF processing, web crawl,
+# chunking, embedding) so they don't block the API process.
+#
+# Install:
+#   sudo cp infra/systemd/chatbot-worker.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable chatbot-worker
+#   sudo systemctl start chatbot-worker
+#
+# Logs:
+#   sudo journalctl -u chatbot-worker -f
+
+[Unit]
+Description=DG ChatBot — background ingestion worker
+After=network.target mysql.service chatbot-api.service
+Requires=mysql.service
+
+[Service]
+Type=exec
+User=deploy
+Group=deploy
+
+WorkingDirectory=/home/deploy/chatbot-platform/services/api
+EnvironmentFile=/home/deploy/chatbot-platform/services/api/.env
+
+ExecStart=/home/deploy/chatbot-platform/services/api/.venv/bin/python \
+    -m app.workers.ingestion_worker
+
+# Restart on crash — ingestion jobs are resumable
+Restart=on-failure
+RestartSec=10
+StartLimitIntervalSec=120
+StartLimitBurst=5
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=chatbot-worker
+
+# Security hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=/home/deploy/chatbot-platform/services/api
+ReadWritePaths=/home/deploy/chatbot-platform/uploads
+ReadWritePaths=/home/deploy/chatbot-platform/chroma_data
+
+[Install]
+WantedBy=multi-user.target
