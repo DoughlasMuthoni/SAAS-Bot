@@ -18,6 +18,7 @@ from .audit_log import AuditLog
 from .usage_event import UsageEvent
 from .plan import Plan
 from .platform_faq import PlatformFaq
+from .platform_page import PlatformPage
 
 __all__ = [
     "Base",
@@ -40,4 +41,5 @@ __all__ = [
     "UsageEvent",
     "Plan",
     "PlatformFaq",
+    "PlatformPage",
 ]

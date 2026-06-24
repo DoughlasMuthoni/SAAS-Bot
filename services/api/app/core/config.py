@@ -1,4 +1,3 @@
-from functools import lru_cache
 from typing import List
 
 from pydantic import field_validator
@@ -70,6 +69,5 @@ class Settings(BaseSettings):
         return self.APP_ENV == "production"
 
 
-@lru_cache
 def get_settings() -> Settings:
     return Settings()

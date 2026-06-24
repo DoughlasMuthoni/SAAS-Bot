@@ -38,3 +38,4 @@ class WidgetConfigResponse(BaseModel):
     welcome_message: str
     position: str
     theme: str
+    show_branding: bool = True  # True = show "Powered by" badge (free plan); False = hidden (paid)

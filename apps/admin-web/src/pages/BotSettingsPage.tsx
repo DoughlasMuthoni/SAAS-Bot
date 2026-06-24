@@ -55,6 +55,15 @@ export default function BotSettingsPage() {
     enabled: !!botId && !!workspaceId,
   })
 
+  const { data: usage } = useQuery<{ allow_custom_branding?: boolean; plan?: string }>({
+    queryKey: ['usage', workspaceId],
+    queryFn: () => api.get(`/analytics/usage?workspace_id=${workspaceId}`).then(r => r.data),
+    enabled: !!workspaceId,
+    staleTime: 30_000,
+  })
+
+  const allowCustomBranding = usage?.allow_custom_branding ?? false
+
   useEffect(() => {
     if (bot) setForm(bot)
   }, [bot])
@@ -216,23 +225,53 @@ export default function BotSettingsPage() {
         <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', alignItems: 'flex-start' }}>
           {/* Controls */}
           <div className="card p-4" style={{ flex: '1 1 300px', minWidth: 280, maxWidth: 440 }}>
-            <div className="mb-4">
-              <label className="form-label fw-medium" style={{ fontSize: 13 }}>Brand Color</label>
+            {/* Branding gate notice */}
+            {!allowCustomBranding && (
+              <div style={{
+                background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 10,
+                padding: '11px 14px', marginBottom: 20, display: 'flex', gap: 10, alignItems: 'flex-start',
+              }}>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="2" strokeLinecap="round" style={{ flexShrink: 0, marginTop: 1 }}>
+                  <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+                </svg>
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: '#92400e', marginBottom: 2 }}>
+                    Brand color &amp; theme are locked on your plan
+                  </div>
+                  <div style={{ fontSize: 12.5, color: '#78350f', lineHeight: 1.5 }}>
+                    Your widget uses the default DG ChatBot appearance and displays a "Powered by DG ChatBot" badge.{' '}
+                    <a href="/billing" style={{ color: '#d97706', fontWeight: 600, textDecoration: 'underline' }}>
+                      Upgrade to Pro
+                    </a>{' '}
+                    to set a custom color, theme, and remove the badge.
+                  </div>
+                </div>
+              </div>
+            )}
+            <div className="mb-4" style={{ opacity: allowCustomBranding ? 1 : 0.5, pointerEvents: allowCustomBranding ? 'auto' : 'none' }}>
+              <label className="form-label fw-medium" style={{ fontSize: 13 }}>
+                Brand Color
+                {!allowCustomBranding && (
+                  <span style={{ marginLeft: 8, fontSize: 11, background: '#f1f5f9', color: '#64748b', padding: '2px 7px', borderRadius: 5, fontWeight: 400 }}>
+                    🔒 Pro feature
+                  </span>
+                )}
+              </label>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                 <input
                   type="color"
                   className="form-control form-control-color"
-                  style={{ width: 48, height: 38, padding: 3, borderRadius: 8, cursor: 'pointer' }}
-                  value={form.brand_color ?? '#6366f1'}
-                  disabled={!canEdit}
+                  style={{ width: 48, height: 38, padding: 3, borderRadius: 8, cursor: allowCustomBranding ? 'pointer' : 'not-allowed' }}
+                  value={form.brand_color ?? '#16A34A'}
+                  disabled={!canEdit || !allowCustomBranding}
                   onChange={(e) => setForm({ ...form, brand_color: e.target.value })}
                 />
                 <input
                   type="text"
                   className="form-control"
                   style={{ maxWidth: 110, fontFamily: 'monospace', fontSize: 13 }}
-                  value={form.brand_color ?? '#6366f1'}
-                  disabled={!canEdit}
+                  value={form.brand_color ?? '#16A34A'}
+                  disabled={!canEdit || !allowCustomBranding}
                   onChange={(e) => setForm({ ...form, brand_color: e.target.value })}
                 />
               </div>
@@ -242,13 +281,13 @@ export default function BotSettingsPage() {
                   <button
                     key={c}
                     title={c}
-                    disabled={!canEdit}
+                    disabled={!canEdit || !allowCustomBranding}
                     onClick={() => setForm({ ...form, brand_color: c })}
                     style={{
                       width: 24, height: 24, borderRadius: '50%', background: c,
                       border: form.brand_color === c ? '3px solid #fff' : '2px solid transparent',
                       boxShadow: form.brand_color === c ? `0 0 0 2px ${c}` : '0 1px 3px rgba(0,0,0,.2)',
-                      cursor: 'pointer', padding: 0,
+                      cursor: allowCustomBranding ? 'pointer' : 'not-allowed', padding: 0,
                     }}
                   />
                 ))}
@@ -283,18 +322,25 @@ export default function BotSettingsPage() {
               </div>
             </div>
 
-            <div className="mb-4">
-              <label className="form-label fw-medium" style={{ fontSize: 13 }}>Theme</label>
+            <div className="mb-4" style={{ opacity: allowCustomBranding ? 1 : 0.5, pointerEvents: allowCustomBranding ? 'auto' : 'none' }}>
+              <label className="form-label fw-medium" style={{ fontSize: 13 }}>
+                Theme
+                {!allowCustomBranding && (
+                  <span style={{ marginLeft: 8, fontSize: 11, background: '#f1f5f9', color: '#64748b', padding: '2px 7px', borderRadius: 5, fontWeight: 400 }}>
+                    🔒 Pro feature
+                  </span>
+                )}
+              </label>
               <div style={{ display: 'flex', gap: 10 }}>
                 {[{ v: 'light', label: 'Light', icon: '☀️' }, { v: 'dark', label: 'Dark', icon: '🌙' }].map(o => (
                   <label key={o.v} style={{
                     flex: 1, border: `2px solid ${(form.theme ?? 'light') === o.v ? previewColor : '#e2e8f0'}`,
-                    borderRadius: 10, padding: '10px 12px', cursor: 'pointer', display: 'flex',
+                    borderRadius: 10, padding: '10px 12px', cursor: allowCustomBranding ? 'pointer' : 'not-allowed', display: 'flex',
                     alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 500,
                     background: (form.theme ?? 'light') === o.v ? `${previewColor}10` : '#fff',
                     transition: 'all .15s',
                   }}>
-                    <input type="radio" style={{ display: 'none' }} checked={(form.theme ?? 'light') === o.v} disabled={!canEdit} onChange={() => setForm({ ...form, theme: o.v })} />
+                    <input type="radio" style={{ display: 'none' }} checked={(form.theme ?? 'light') === o.v} disabled={!canEdit || !allowCustomBranding} onChange={() => setForm({ ...form, theme: o.v })} />
                     <span>{o.icon}</span>
                     {o.label}
                   </label>
@@ -315,6 +361,7 @@ export default function BotSettingsPage() {
               color={previewColor}
               welcomeMessage={form.welcome_message ?? bot.welcome_message}
               dark={previewDark}
+              showBranding={!allowCustomBranding}
             />
           </div>
         </div>
@@ -427,7 +474,7 @@ export default function BotSettingsPage() {
   )
 }
 
-function WidgetPreview({ name, color, welcomeMessage, dark }: { name: string; color: string; welcomeMessage: string; dark: boolean }) {
+function WidgetPreview({ name, color, welcomeMessage, dark, showBranding }: { name: string; color: string; welcomeMessage: string; dark: boolean; showBranding?: boolean }) {
   const msgBg = dark ? '#27272a' : '#f1f5f9'
   const msgText = dark ? '#f4f4f5' : '#1e293b'
   const panelBg = dark ? '#18181b' : '#fff'
@@ -485,6 +532,30 @@ function WidgetPreview({ name, color, welcomeMessage, dark }: { name: string; co
           </svg>
         </div>
       </div>
+
+      {/* Branding badge */}
+      {showBranding && (
+        <div style={{
+          padding: '5px 10px 7px',
+          textAlign: 'center',
+          background: areaBg,
+          borderTop: `1px solid ${areaBorder}`,
+        }}>
+          <span style={{
+            fontSize: 9.5,
+            color: dark ? '#52525b' : '#94a3b8',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 4,
+            letterSpacing: '.02em',
+          }}>
+            <svg width="9" height="9" viewBox="0 0 24 24" fill={dark ? '#52525b' : '#94a3b8'}>
+              <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 14H9V8h2v8zm4 0h-2V8h2v8z"/>
+            </svg>
+            Powered by DG ChatBot
+          </span>
+        </div>
+      )}
     </div>
   )
 }

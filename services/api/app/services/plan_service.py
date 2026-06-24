@@ -22,6 +22,7 @@ async def _get_plan_limits(db: AsyncSession, plan_slug: str) -> PlanLimits:
             max_pages_per_crawl=plan_row.max_pages_per_crawl,
             allow_crawl=plan_row.allow_crawl,
             allow_file_upload=plan_row.allow_file_upload,
+            allow_custom_branding=plan_row.allow_custom_branding,
         )
     return get_limits(plan_slug)
 
@@ -171,6 +172,7 @@ class PlanService:
             "sources":       {"used": source_count,  "limit": limits.max_sources},
             "conversations": {"used": conv_count,    "limit": limits.max_conversations_per_month},
             "team_members":  {"used": member_count,  "limit": limits.max_team_members},
-            "allow_crawl":        limits.allow_crawl,
-            "allow_file_upload":  limits.allow_file_upload,
+            "allow_crawl":             limits.allow_crawl,
+            "allow_file_upload":       limits.allow_file_upload,
+            "allow_custom_branding":   limits.allow_custom_branding,
         }

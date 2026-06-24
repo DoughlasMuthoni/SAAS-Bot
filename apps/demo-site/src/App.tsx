@@ -39,10 +39,10 @@ function Navbar() {
           <a href="#faq">FAQ</a>
         </div>
         <div className="ds-nav-cta">
-          <a href={LOGIN_URL} target="_blank" rel="noopener noreferrer" className="btn-ghost" style={{ padding: '8px 16px', fontSize: 14 }}>
+          <a href={LOGIN_URL} className="btn-ghost" style={{ padding: '8px 16px', fontSize: 14 }}>
             Sign in
           </a>
-          <a href={REGISTER_URL} target="_blank" rel="noopener noreferrer" className="btn-brand" style={{ padding: '8px 18px', fontSize: 14 }}>
+          <a href={REGISTER_URL} className="btn-brand" style={{ padding: '8px 18px', fontSize: 14 }}>
             Get started free
           </a>
         </div>
@@ -71,8 +71,8 @@ function Navbar() {
         <a href="#pricing" onClick={close}>Pricing</a>
         <a href="#faq" onClick={close}>FAQ</a>
         <div className="ds-mobile-menu-divider" />
-        <a href={LOGIN_URL} target="_blank" rel="noopener noreferrer" className="btn-ghost" style={{ fontSize: 14 }} onClick={close}>Sign in</a>
-        <a href={REGISTER_URL} target="_blank" rel="noopener noreferrer" className="btn-brand" style={{ fontSize: 14 }} onClick={close}>Get started free</a>
+        <a href={LOGIN_URL} className="btn-ghost" style={{ fontSize: 14 }} onClick={close}>Sign in</a>
+        <a href={REGISTER_URL} className="btn-brand" style={{ fontSize: 14 }} onClick={close}>Get started free</a>
       </div>
     </>
   )
@@ -404,11 +404,15 @@ function Pricing() {
                 const ui = PLAN_CTA[p.slug] ?? DEFAULT_CTA
 
                 // Build feature list: limits first, then extra features from DB
+                // Features starting with '-' are excluded (shown with ❌), others included (✅)
                 const featureList: { ok: boolean; text: string }[] = [
                   { ok: true, text: p.max_bots === -1 ? 'Unlimited chatbots' : `${p.max_bots} chatbot${p.max_bots !== 1 ? 's' : ''}` },
                   { ok: true, text: p.max_sources === -1 ? 'Unlimited sources' : `${p.max_sources} knowledge sources` },
                   { ok: true, text: p.max_conversations_per_month === -1 ? 'Unlimited conversations' : `${limitLabel(p.max_conversations_per_month)} conversations / month` },
-                  ...(p.features ?? []).map(f => ({ ok: true, text: f })),
+                  ...(p.features ?? []).map(f => f.startsWith('-')
+                    ? { ok: false, text: f.slice(1).trim() }
+                    : { ok: true, text: f }
+                  ),
                 ]
 
                 return (
@@ -432,11 +436,17 @@ function Pricing() {
                       <hr className="ds-plan-divider" />
                       <ul className="ds-plan-features">
                         {featureList.map((f, i) => (
-                          <li key={i}>
-                            <svg className="check" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-                              <polyline points="20 6 9 17 4 12"/>
-                            </svg>
-                            <span style={{ color: 'var(--muted)' }}>{f.text}</span>
+                          <li key={i} style={{ opacity: f.ok ? 1 : 0.5 }}>
+                            {f.ok ? (
+                              <svg className="check" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                                <polyline points="20 6 9 17 4 12"/>
+                              </svg>
+                            ) : (
+                              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2.5" strokeLinecap="round" style={{ flexShrink: 0 }}>
+                                <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                              </svg>
+                            )}
+                            <span style={{ color: f.ok ? 'var(--muted)' : '#9ca3af', textDecoration: f.ok ? 'none' : 'none' }}>{f.text}</span>
                           </li>
                         ))}
                       </ul>
@@ -554,9 +564,9 @@ function Footer() {
           <div className="col-6 col-md-2">
             <div className="ds-footer-heading">Legal</div>
             <ul className="ds-footer-links">
-              <li><a href="#">Privacy policy</a></li>
-              <li><a href="#">Terms of service</a></li>
-              <li><a href="#">Security</a></li>
+              <li><a href={`${ADMIN_URL}/privacy`}>Privacy policy</a></li>
+              <li><a href={`${ADMIN_URL}/terms`}>Terms of service</a></li>
+              <li><a href={`${ADMIN_URL}/security`}>Security</a></li>
             </ul>
           </div>
         </div>
@@ -581,11 +591,8 @@ function WhatsAppButton() {
       rel="noopener noreferrer"
       aria-label="Chat on WhatsApp"
     >
-      {/* WhatsApp logo SVG */}
-      <svg width="28" height="28" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <path d="M16 3C9.373 3 4 8.373 4 15c0 2.385.667 4.61 1.826 6.51L4 29l7.695-1.797A12.94 12.94 0 0016 28c6.627 0 12-5.373 12-12S22.627 3 16 3z" fill="#fff"/>
-        <path d="M16 5.5C10.753 5.5 6.5 9.753 6.5 15c0 2.14.69 4.12 1.862 5.736l-1.21 4.446 4.582-1.197A9.47 9.47 0 0016 24.5c5.247 0 9.5-4.253 9.5-9.5S21.247 5.5 16 5.5z" fill="#25D366"/>
-        <path d="M12.5 10.5c-.3-.7-.65-.72-1.02-.73H10.8c-.32 0-.83.12-1.27.6-.43.47-1.63 1.6-1.63 3.89s1.67 4.51 1.9 4.82c.23.3 3.22 5.14 7.94 7c4.72 1.85 4.72 1.23 5.57 1.15.85-.08 2.75-1.12 3.14-2.21.38-1.08.38-2.01.27-2.2-.1-.2-.38-.3-.8-.52-.42-.23-2.47-1.22-2.85-1.36-.38-.14-.65-.2-.93.2-.27.4-1.07 1.36-1.31 1.64-.24.27-.48.3-.9.1-.42-.2-1.77-.65-3.37-2.08-1.25-1.11-2.1-2.48-2.34-2.9-.24-.42-.03-.65.18-.86.18-.18.42-.47.63-.7.2-.24.27-.41.4-.68.14-.27.07-.51-.04-.71s-.93-2.23-1.28-3.07z" fill="#fff"/>
+      <svg width="26" height="26" viewBox="0 0 24 24" fill="white">
+        <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
       </svg>
       <span className="ds-whatsapp-tooltip">Chat on WhatsApp</span>
     </a>

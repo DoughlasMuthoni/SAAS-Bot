@@ -14,58 +14,97 @@ export default function MessageList({ dark = false }: Props) {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, streaming])
 
+  const lastMsg = messages[messages.length - 1]
   const showTyping =
     streaming &&
-    messages[messages.length - 1]?.role === 'assistant' &&
-    messages[messages.length - 1]?.content === ''
+    lastMsg?.role === 'assistant' &&
+    lastMsg?.content === ''
 
-  const brandColor = config?.brand_color || '#6366f1'
+  const brandColor = config?.brand_color || '#16A34A'
+
+  const msgBg  = dark ? '#1c1c1f' : '#EBEBED'
+  const textMuted = dark ? '#71717a' : '#94a3b8'
 
   return (
     <div style={{
       flex: 1,
       overflowY: 'auto',
-      padding: '14px 14px 6px',
+      padding: '16px 14px 8px',
       display: 'flex',
       flexDirection: 'column',
-      gap: 10,
-      background: dark ? '#18181b' : '#fff',
+      gap: 12,
+      background: dark ? '#18181b' : '#F6F6F7',
       scrollbarWidth: 'thin',
-      scrollbarColor: dark ? '#3f3f46 transparent' : '#cbd5e1 transparent',
+      scrollbarColor: dark ? '#3f3f46 transparent' : '#e2e8f0 transparent',
     }}>
       <style>{`
-        @keyframes cb-bounce {
-          0%, 80%, 100% { transform: translateY(0); opacity: .4; }
-          40% { transform: translateY(-5px); opacity: 1; }
+        @keyframes cb-wave {
+          0%, 60%, 100% { transform: translateY(0); }
+          30% { transform: translateY(-6px); }
+        }
+        @keyframes cb-pulse-dot {
+          0%, 100% { opacity: .35; transform: scale(.8); }
+          50% { opacity: 1; transform: scale(1.1); }
         }
       `}</style>
 
+      {/* Empty / welcome state */}
       {messages.length === 0 && config && (
         <div style={{
           display: 'flex', flexDirection: 'column',
           alignItems: 'center', justifyContent: 'center',
-          flex: 1, gap: 10,
-          textAlign: 'center', padding: '0 20px',
+          flex: 1, gap: 14, textAlign: 'center', padding: '0 24px',
         }}>
           <div style={{
-            width: 48, height: 48, borderRadius: '50%',
-            background: `${brandColor}18`,
+            width: 56, height: 56, borderRadius: '50%',
+            background: `linear-gradient(135deg, ${brandColor}22, ${brandColor}44)`,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: 22,
+            fontSize: 24, boxShadow: `0 0 0 8px ${brandColor}11`,
           }}>💬</div>
-          <p style={{ margin: 0, fontSize: 13.5, lineHeight: 1.5, color: dark ? '#a1a1aa' : '#64748b' }}>
-            {config.welcome_message}
-          </p>
-          <p style={{ margin: 0, fontSize: 12, color: dark ? '#71717a' : '#94a3b8' }}>
-            Ask me anything — I'm here to help!
-          </p>
+
+          <div>
+            <p style={{ margin: '0 0 6px', fontSize: 14, fontWeight: 600, color: dark ? '#e4e4e7' : '#1e293b', lineHeight: 1.45 }}>
+              {config.welcome_message}
+            </p>
+            <p style={{ margin: 0, fontSize: 12.5, color: textMuted, lineHeight: 1.5 }}>
+              Ask me anything — I'll answer from our knowledge base.
+            </p>
+          </div>
+
+          {/* Suggested prompt chips */}
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7, justifyContent: 'center', marginTop: 4 }}>
+            {['How does this work?', 'What can you help with?', 'Contact support'].map(q => (
+              <div key={q} style={{
+                background: msgBg,
+                border: `1px solid ${dark ? '#3f3f46' : '#e2e8f0'}`,
+                borderRadius: 20, padding: '5px 12px',
+                fontSize: 12, color: dark ? '#a1a1aa' : '#64748b',
+                cursor: 'default',
+              }}>{q}</div>
+            ))}
+          </div>
         </div>
       )}
 
-      {messages.map((msg) => (
-        <MessageBubble key={msg.id} message={msg} brandColor={brandColor} dark={dark} />
-      ))}
+      {/* Messages */}
+      {messages.map((msg, idx) => {
+        const isLastAssistant =
+          msg.role === 'assistant' &&
+          idx === messages.length - 1 &&
+          streaming &&
+          msg.content !== ''
+        return (
+          <MessageBubble
+            key={msg.id}
+            message={msg}
+            brandColor={brandColor}
+            dark={dark}
+            isStreaming={isLastAssistant}
+          />
+        )
+      })}
 
+      {/* Typing indicator — only shown before first token arrives */}
       {showTyping && (
         <div style={{ display: 'flex', alignItems: 'flex-end', gap: 8 }}>
           <div style={{
@@ -75,17 +114,18 @@ export default function MessageList({ dark = false }: Props) {
             fontSize: 13,
           }}>🤖</div>
           <div style={{
-            display: 'flex', alignItems: 'center', gap: 4,
+            display: 'flex', alignItems: 'center', gap: 5,
             background: dark ? '#27272a' : '#f1f5f9',
-            borderRadius: '14px 14px 14px 2px',
-            padding: '11px 14px',
+            borderRadius: '16px 16px 16px 2px',
+            padding: '12px 16px',
             boxShadow: dark ? 'none' : '0 1px 4px rgba(0,0,0,.07)',
           }}>
             {[0, 1, 2].map((i) => (
               <div key={i} style={{
-                width: 6, height: 6, borderRadius: '50%',
-                background: dark ? '#71717a' : '#94a3b8',
-                animation: `cb-bounce 1.2s ease-in-out ${i * 0.2}s infinite`,
+                width: 7, height: 7, borderRadius: '50%',
+                background: dark ? '#52525b' : brandColor,
+                opacity: 0.5,
+                animation: `cb-wave 1.1s ease-in-out ${i * 0.18}s infinite`,
               }} />
             ))}
           </div>

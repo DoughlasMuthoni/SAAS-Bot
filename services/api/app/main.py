@@ -3,7 +3,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.core.config import get_settings
@@ -81,9 +81,22 @@ def create_app() -> FastAPI:
     app.include_router(public.router, prefix="/api/v1")
     app.include_router(team.router, prefix="/api/v1")
 
-    # Serve widget bundle
+    # Serve widget bundle — widget.js gets no-cache so browsers always fetch the latest
     static_dir = Path(__file__).parent / "static"
     static_dir.mkdir(exist_ok=True)
+
+    @app.get("/static/widget.js", include_in_schema=False)
+    async def serve_widget():
+        widget_path = static_dir / "widget.js"
+        return FileResponse(
+            str(widget_path),
+            media_type="application/javascript",
+            headers={
+                "Cache-Control": "no-cache, must-revalidate",
+                "Pragma": "no-cache",
+            },
+        )
+
     app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
     return app

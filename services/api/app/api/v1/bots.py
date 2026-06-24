@@ -11,6 +11,9 @@ from app.services.plan_service import PlanService
 
 router = APIRouter(prefix="/bots", tags=["bots"])
 
+FREE_BRAND_COLOR = '#16A34A'
+FREE_THEME = 'light'
+
 # Role shortcuts
 _viewer  = Depends(get_current_active_user)
 _editor  = Depends(require_role("owner", "admin", "editor"))
@@ -36,6 +39,9 @@ async def create_bot(
     user: User = _manager,
 ):
     await PlanService.check_bot_limit(db, user.org_id)
+    limits = await PlanService.get_limits_for_org(db, user.org_id)
+    if not limits.allow_custom_branding:
+        body = body.model_copy(update={'brand_color': FREE_BRAND_COLOR, 'theme': 'light'})
     bot = await BotService.create_bot(db, user, body)
     return _to_response(bot)
 
@@ -62,6 +68,10 @@ async def update_bot(
     db: AsyncSession = Depends(get_db),
     user: User = _editor,
 ):
+    limits = await PlanService.get_limits_for_org(db, user.org_id)
+    if not limits.allow_custom_branding:
+        # Strip branding fields — free plan can't customise them
+        body = body.model_copy(update={'brand_color': FREE_BRAND_COLOR, 'theme': FREE_THEME})
     try:
         bot = await BotService.update_bot(db, bot_id, workspace_id, body)
     except NotFoundError:

@@ -2,9 +2,12 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from sqlalchemy import select
+
 from app.core.database import get_db
 from app.core.exceptions import AuthenticationError
-from app.models import Lead
+from app.models import Lead, Organization
+from app.models.plan import Plan
 from app.repositories.bot_repository import BotRepository
 from app.schemas.chat import (
     ChatRequest,
@@ -26,6 +29,19 @@ async def get_widget_config(public_key: str, db: AsyncSession = Depends(get_db))
     bot = await BotRepository.get_by_public_key(db, public_key)
     if bot is None:
         raise HTTPException(status_code=404, detail="Bot not found")
+
+    # Resolve the org to enforce suspension and determine branding gate
+    allow_custom_branding = False
+    org_result = await db.execute(select(Organization).where(Organization.id == bot.org_id))
+    org = org_result.scalar_one_or_none()
+    if org:
+        if org.suspended_at is not None:
+            raise HTTPException(status_code=403, detail="This service is currently unavailable.")
+        plan_result = await db.execute(select(Plan).where(Plan.slug == org.plan))
+        plan = plan_result.scalar_one_or_none()
+        if plan:
+            allow_custom_branding = plan.allow_custom_branding
+
     return WidgetConfigResponse(
         bot_id=bot.id,
         name=bot.name,
@@ -33,6 +49,7 @@ async def get_widget_config(public_key: str, db: AsyncSession = Depends(get_db))
         welcome_message=bot.welcome_message,
         position=bot.position,
         theme=bot.theme,
+        show_branding=not allow_custom_branding,
     )
 
 
@@ -46,6 +63,11 @@ async def create_session(body: SessionCreateRequest, db: AsyncSession = Depends(
     is_allowed = await DomainRepository.validate_domain(db, body.public_key, body.domain)
     if not is_allowed:
         raise HTTPException(status_code=403, detail="Domain not authorized for this bot")
+
+    org_result = await db.execute(select(Organization).where(Organization.id == bot.org_id))
+    org = org_result.scalar_one_or_none()
+    if org and org.suspended_at is not None:
+        raise HTTPException(status_code=403, detail="This service is currently unavailable.")
 
     await PlanService.check_conversation_limit(db, bot.org_id, bot.workspace_id)
 

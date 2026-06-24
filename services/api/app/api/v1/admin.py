@@ -1,22 +1,24 @@
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import require_superadmin
 from app.core.database import get_db
-from app.models import Organization, User
+from app.models import Bot, Organization, User, Workspace
 from app.models.base import generate_uuid
 from app.models.plan import Plan
 from app.models.platform_faq import PlatformFaq
+from app.models.platform_page import PlatformPage
 from app.schemas.faq import (
     PlatformFaqCreate,
     PlatformFaqResponse,
     PlatformFaqUpdate,
     ReorderRequest,
 )
-from app.schemas.plan import OrgPlanUpdate, OrgResponse, PlanCreate, PlanResponse, PlanUpdate
+from app.schemas.plan import OrgDetail, OrgPlanUpdate, OrgResponse, OrgSuspendRequest, OrgUserDetail, PlanCreate, PlanResponse, PlanUpdate
+from app.schemas.platform_page import PlatformPageResponse, PlatformPageUpdate
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -67,6 +69,7 @@ async def create_plan(
         max_pages_per_crawl=body.max_pages_per_crawl,
         allow_crawl=body.allow_crawl,
         allow_file_upload=body.allow_file_upload,
+        allow_custom_branding=body.allow_custom_branding,
         is_active=body.is_active,
         is_default=body.is_default,
         features=body.features,
@@ -152,7 +155,41 @@ async def delete_plan(
     await db.commit()
 
 
-# ── Organisation plan assignment ─────────────────────────────────
+# ── Organisation management ───────────────────────────────────────
+
+async def _get_org_or_404(db: AsyncSession, org_id: str) -> Organization:
+    org = (await db.execute(
+        select(Organization).where(Organization.id == org_id, Organization.deleted_at.is_(None))
+    )).scalar_one_or_none()
+    if not org:
+        raise HTTPException(status_code=404, detail="Organisation not found.")
+    return org
+
+
+async def _org_counts(db: AsyncSession, org_id: str) -> tuple[int, int]:
+    user_count = (await db.execute(
+        select(func.count()).select_from(User)
+        .where(User.org_id == org_id, User.deleted_at.is_(None))
+    )).scalar() or 0
+    bot_count = (await db.execute(
+        select(func.count()).select_from(Bot)
+        .where(Bot.org_id == org_id, Bot.deleted_at.is_(None))
+    )).scalar() or 0
+    return int(user_count), int(bot_count)
+
+
+def _org_response(o: Organization, user_count: int = 0, bot_count: int = 0) -> OrgResponse:
+    return OrgResponse(
+        id=o.id,
+        name=o.name,
+        slug=o.slug,
+        plan=o.plan,
+        is_suspended=o.suspended_at is not None,
+        user_count=user_count,
+        bot_count=bot_count,
+        created_at=o.created_at.isoformat(),
+    )
+
 
 @router.get("/organizations", response_model=list[OrgResponse])
 async def list_organizations(
@@ -165,13 +202,54 @@ async def list_organizations(
         .order_by(Organization.created_at.desc())
     )
     orgs = result.scalars().all()
-    return [OrgResponse(
-        id=o.id,
-        name=o.name,
-        slug=o.slug,
-        plan=o.plan,
-        created_at=o.created_at.isoformat(),
-    ) for o in orgs]
+    responses = []
+    for o in orgs:
+        uc, bc = await _org_counts(db, o.id)
+        responses.append(_org_response(o, uc, bc))
+    return responses
+
+
+@router.get("/organizations/{org_id}", response_model=OrgDetail)
+async def get_organization(
+    org_id: str,
+    db: AsyncSession = Depends(get_db),
+    _user: User = _superadmin,
+):
+    org = await _get_org_or_404(db, org_id)
+    users_result = await db.execute(
+        select(User)
+        .where(User.org_id == org_id, User.deleted_at.is_(None))
+        .order_by(User.created_at)
+    )
+    users = users_result.scalars().all()
+    ws_count = (await db.execute(
+        select(func.count()).select_from(Workspace).where(Workspace.org_id == org_id)
+    )).scalar() or 0
+    bot_count = (await db.execute(
+        select(func.count()).select_from(Bot).where(Bot.org_id == org_id, Bot.deleted_at.is_(None))
+    )).scalar() or 0
+    return OrgDetail(
+        id=org.id,
+        name=org.name,
+        slug=org.slug,
+        plan=org.plan,
+        is_suspended=org.suspended_at is not None,
+        suspension_reason=org.suspension_reason,
+        suspended_at=org.suspended_at.isoformat() if org.suspended_at else None,
+        user_count=len(users),
+        bot_count=int(bot_count),
+        workspace_count=int(ws_count),
+        users=[OrgUserDetail(
+            id=u.id,
+            email=u.email,
+            full_name=u.full_name,
+            role=u.role,
+            is_active=u.is_active,
+            last_login_at=u.last_login_at.isoformat() if u.last_login_at else None,
+            created_at=u.created_at.isoformat(),
+        ) for u in users],
+        created_at=org.created_at.isoformat(),
+    )
 
 
 @router.put("/organizations/{org_id}/plan", response_model=OrgResponse)
@@ -186,24 +264,63 @@ async def set_org_plan(
     )).scalar_one_or_none()
     if not plan_row:
         raise HTTPException(status_code=404, detail=f"Active plan '{body.plan_slug}' not found.")
-
-    org = (await db.execute(
-        select(Organization).where(Organization.id == org_id, Organization.deleted_at.is_(None))
-    )).scalar_one_or_none()
-    if not org:
-        raise HTTPException(status_code=404, detail="Organisation not found.")
-
+    org = await _get_org_or_404(db, org_id)
     org.plan = body.plan_slug
     org.updated_at = datetime.now(timezone.utc)
     await db.commit()
     await db.refresh(org)
-    return OrgResponse(
-        id=org.id,
-        name=org.name,
-        slug=org.slug,
-        plan=org.plan,
-        created_at=org.created_at.isoformat(),
-    )
+    uc, bc = await _org_counts(db, org.id)
+    return _org_response(org, uc, bc)
+
+
+@router.put("/organizations/{org_id}/suspend", response_model=OrgResponse)
+async def suspend_organization(
+    org_id: str,
+    body: OrgSuspendRequest,
+    db: AsyncSession = Depends(get_db),
+    _user: User = _superadmin,
+):
+    org = await _get_org_or_404(db, org_id)
+    if org.suspended_at is not None:
+        raise HTTPException(status_code=409, detail="Organisation is already suspended.")
+    now = datetime.now(timezone.utc)
+    org.suspended_at = now
+    org.suspension_reason = body.reason
+    org.updated_at = now
+    await db.commit()
+    await db.refresh(org)
+    uc, bc = await _org_counts(db, org.id)
+    return _org_response(org, uc, bc)
+
+
+@router.put("/organizations/{org_id}/unsuspend", response_model=OrgResponse)
+async def unsuspend_organization(
+    org_id: str,
+    db: AsyncSession = Depends(get_db),
+    _user: User = _superadmin,
+):
+    org = await _get_org_or_404(db, org_id)
+    if org.suspended_at is None:
+        raise HTTPException(status_code=409, detail="Organisation is not suspended.")
+    org.suspended_at = None
+    org.suspension_reason = None
+    org.updated_at = datetime.now(timezone.utc)
+    await db.commit()
+    await db.refresh(org)
+    uc, bc = await _org_counts(db, org.id)
+    return _org_response(org, uc, bc)
+
+
+@router.delete("/organizations/{org_id}", status_code=204)
+async def delete_organization(
+    org_id: str,
+    db: AsyncSession = Depends(get_db),
+    _user: User = _superadmin,
+):
+    org = await _get_org_or_404(db, org_id)
+    org.deleted_at = datetime.now(timezone.utc)
+    org.updated_at = datetime.now(timezone.utc)
+    await db.commit()
 
 
 # ── Platform FAQ CRUD ─────────────────────────────────────────────
@@ -317,6 +434,7 @@ def _plan_response(p: Plan) -> PlanResponse:
         max_pages_per_crawl=p.max_pages_per_crawl,
         allow_crawl=p.allow_crawl,
         allow_file_upload=p.allow_file_upload,
+        allow_custom_branding=p.allow_custom_branding,
         is_active=p.is_active,
         is_default=p.is_default,
         features=p.features,
@@ -335,3 +453,50 @@ def _faq_response(f: PlatformFaq) -> PlatformFaqResponse:
         created_at=f.created_at.isoformat(),
         updated_at=f.updated_at.isoformat(),
     )
+
+
+# ── Platform Pages CRUD ────────────────────────────────────────────
+
+@router.get("/pages", response_model=list[PlatformPageResponse])
+async def list_pages(
+    db: AsyncSession = Depends(get_db),
+    _: User = _superadmin,
+):
+    """List all editable platform pages."""
+    result = await db.execute(select(PlatformPage).order_by(PlatformPage.slug))
+    return result.scalars().all()
+
+
+@router.get("/pages/{slug}", response_model=PlatformPageResponse)
+async def get_page(
+    slug: str,
+    db: AsyncSession = Depends(get_db),
+    _: User = _superadmin,
+):
+    """Get a single platform page by slug."""
+    result = await db.execute(select(PlatformPage).where(PlatformPage.slug == slug))
+    page = result.scalar_one_or_none()
+    if page is None:
+        raise HTTPException(status_code=404, detail="Page not found.")
+    return page
+
+
+@router.put("/pages/{slug}", response_model=PlatformPageResponse)
+async def update_page(
+    slug: str,
+    body: PlatformPageUpdate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = _superadmin,
+):
+    """Update the title and HTML content of a platform page."""
+    result = await db.execute(select(PlatformPage).where(PlatformPage.slug == slug))
+    page = result.scalar_one_or_none()
+    if page is None:
+        raise HTTPException(status_code=404, detail="Page not found.")
+    page.title = body.title
+    page.content = body.content
+    page.updated_by = current_user.email
+    page.updated_at = datetime.now(timezone.utc)
+    await db.commit()
+    await db.refresh(page)
+    return page

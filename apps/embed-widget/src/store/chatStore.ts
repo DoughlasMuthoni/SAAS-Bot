@@ -5,6 +5,7 @@ interface Message {
   role: 'user' | 'assistant'
   content: string
   citations?: any[]
+  timestamp: string
 }
 
 interface WidgetConfig {
@@ -14,6 +15,7 @@ interface WidgetConfig {
   welcome_message: string
   position: string
   theme: string
+  show_branding: boolean
 }
 
 interface ChatState {

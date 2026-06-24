@@ -1,4 +1,5 @@
 import { useNavigate } from 'react-router-dom'
+import { useQuery } from '@tanstack/react-query'
 
 interface MeterProps {
   label: string
@@ -65,6 +66,16 @@ interface UsageData {
   team_members?: { used: number; limit: number }
   allow_crawl?: boolean
   allow_file_upload?: boolean
+  allow_custom_branding?: boolean
+}
+
+interface ApiPlan {
+  slug: string
+  name: string
+  max_bots: number
+  max_sources: number
+  max_conversations_per_month: number
+  allow_crawl: boolean
 }
 
 interface Props {
@@ -72,9 +83,20 @@ interface Props {
   compact?: boolean
 }
 
+function limitStr(v: number) {
+  return v === -1 ? 'unlimited' : v.toLocaleString()
+}
+
 export default function UsageMeter({ data, compact = false }: Props) {
   const navigate = useNavigate()
   const planMeta = PLAN_LABELS[data.plan] ?? PLAN_LABELS.free
+
+  const { data: plans = [] } = useQuery<ApiPlan[]>({
+    queryKey: ['plans-public'],
+    queryFn: () => fetch('/api/v1/public/plans').then(r => r.json()),
+    staleTime: 5 * 60_000,
+    enabled: data.plan !== 'enterprise',
+  })
 
   if (compact) {
     return (
@@ -128,19 +150,42 @@ export default function UsageMeter({ data, compact = false }: Props) {
 
       {/* Feature gates */}
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-        <FeatureBadge label="File upload"    enabled={data.allow_file_upload ?? true} />
-        <FeatureBadge label="Web crawler"    enabled={data.allow_crawl ?? false} />
+        <FeatureBadge label="File upload"      enabled={data.allow_file_upload ?? true} />
+        <FeatureBadge label="Web crawler"      enabled={data.allow_crawl ?? false} />
+        <FeatureBadge label="Custom branding"  enabled={data.allow_custom_branding ?? false} />
       </div>
 
-      {data.plan === 'free' && (
-        <div style={{ marginTop: 14, padding: '10px 12px', background: '#fffbeb', borderRadius: 8, border: '1px solid #fde68a', fontSize: 12.5, color: '#92400e' }}>
-          <strong>Free plan:</strong> 1 bot · 5 sources · 500 conversations/month · no web crawler.{' '}
-          <button onClick={() => navigate('/billing')} style={{ background: 'none', border: 'none', padding: 0, color: '#d97706', fontWeight: 600, cursor: 'pointer', textDecoration: 'underline' }}>
-            Upgrade to Pro
-          </button>{' '}
-          for 3 bots, 15 sources, 5,000 conversations, and web crawler.
-        </div>
-      )}
+      {data.plan !== 'enterprise' && (() => {
+        const currentPlanObj = plans.find(p => p.slug === data.plan)
+        const upgradePlan = plans.find(p => p.slug !== data.plan && p.slug !== 'free')
+        if (!upgradePlan) return null
+
+        const currentDesc = [
+          `${limitStr(data.bots.limit)} bot${data.bots.limit === 1 ? '' : 's'}`,
+          `${limitStr(data.sources.limit)} sources`,
+          `${limitStr(data.conversations.limit)} conversations/month`,
+          data.allow_crawl ? 'web crawler' : 'no web crawler',
+        ].join(' · ')
+
+        const upgradeDesc = [
+          `${limitStr(upgradePlan.max_bots)} bot${upgradePlan.max_bots === 1 ? '' : 's'}`,
+          `${limitStr(upgradePlan.max_sources)} sources`,
+          `${limitStr(upgradePlan.max_conversations_per_month)} conversations`,
+          upgradePlan.allow_crawl ? 'web crawler' : null,
+        ].filter(Boolean).join(', ')
+
+        const currentLabel = currentPlanObj?.name ?? (data.plan.charAt(0).toUpperCase() + data.plan.slice(1))
+
+        return (
+          <div style={{ marginTop: 14, padding: '10px 12px', background: '#fffbeb', borderRadius: 8, border: '1px solid #fde68a', fontSize: 12.5, color: '#92400e' }}>
+            <strong>{currentLabel} plan:</strong> {currentDesc}.{' '}
+            <button onClick={() => navigate('/billing')} style={{ background: 'none', border: 'none', padding: 0, color: '#d97706', fontWeight: 600, cursor: 'pointer', textDecoration: 'underline' }}>
+              Upgrade to {upgradePlan.name}
+            </button>{' '}
+            for {upgradeDesc}.
+          </div>
+        )
+      })()}
     </div>
   )
 }

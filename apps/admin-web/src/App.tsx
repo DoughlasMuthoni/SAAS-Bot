@@ -14,6 +14,10 @@ import AnalyticsPage from './pages/AnalyticsPage'
 import BillingPage from './pages/BillingPage'
 import PlansPage from './pages/PlansPage'
 import TeamPage from './pages/TeamPage'
+import ContentPage from './pages/ContentPage'
+import PrivacyPolicyPage from './pages/PrivacyPolicyPage'
+import TermsOfServicePage from './pages/TermsOfServicePage'
+import SecurityPage from './pages/SecurityPage'
 
 export default function App() {
   return (
@@ -39,7 +43,11 @@ export default function App() {
         <Route path="analytics" element={<AnalyticsPage />} />
         <Route path="billing" element={<BillingPage />} />
         <Route path="plans" element={<PlansPage />} />
+        <Route path="content" element={<ContentPage />} />
         <Route path="team" element={<TeamPage />} />
+        <Route path="privacy" element={<PrivacyPolicyPage />} />
+        <Route path="terms" element={<TermsOfServicePage />} />
+        <Route path="security" element={<SecurityPage />} />
       </Route>
     </Routes>
   )

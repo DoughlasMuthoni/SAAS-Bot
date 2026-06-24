@@ -21,11 +21,12 @@ export default function ChatPanel({ onClose, apiBase, isMobile }: Props) {
 
   const handleSend = async (text: string) => {
     if (!sessionToken || streaming) return
-    const userMsg = { id: crypto.randomUUID(), role: 'user' as const, content: text }
+    const now = () => new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    const userMsg = { id: crypto.randomUUID(), role: 'user' as const, content: text, timestamp: now() }
     addMessage(userMsg)
     setStreaming(true)
 
-    const assistantMsg = { id: crypto.randomUUID(), role: 'assistant' as const, content: '' }
+    const assistantMsg = { id: crypto.randomUUID(), role: 'assistant' as const, content: '', timestamp: now() }
     addMessage(assistantMsg)
 
     const history = messages.slice(-20).map((m) => ({ role: m.role, content: m.content }))
@@ -76,7 +77,8 @@ export default function ChatPanel({ onClose, apiBase, isMobile }: Props) {
   return (
     <div style={{
       ...panelStyle,
-      background: dark ? '#18181b' : '#fff',
+      background: dark ? '#18181b' : '#F6F6F7',
+      position: 'relative',
       boxShadow: '0 12px 40px rgba(0,0,0,.28), 0 2px 8px rgba(0,0,0,.14)',
       display: 'flex',
       flexDirection: 'column',
@@ -133,6 +135,36 @@ export default function ChatPanel({ onClose, apiBase, isMobile }: Props) {
       <MessageList dark={dark} />
       {showLeadForm && <LeadCaptureForm apiBase={apiBase} dark={dark} />}
       <InputArea onSend={handleSend} disabled={streaming} brandColor={config.brand_color} dark={dark} />
+
+      {config.show_branding && (
+        <div style={{
+          textAlign: 'center',
+          padding: '5px 0 6px',
+          background: dark ? '#18181b' : '#fff',
+          borderTop: `1px solid ${dark ? '#27272a' : '#f1f5f9'}`,
+          flexShrink: 0,
+        }}>
+          <a
+            href="https://dgchatbot.com"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+              fontSize: 10.5,
+              color: dark ? '#52525b' : '#94a3b8',
+              textDecoration: 'none',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 4,
+              letterSpacing: '.01em',
+            }}
+          >
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+              <path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/>
+            </svg>
+            Powered by DG ChatBot
+          </a>
+        </div>
+      )}
     </div>
   )
 }

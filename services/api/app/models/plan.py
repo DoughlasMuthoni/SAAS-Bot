@@ -25,6 +25,7 @@ class Plan(Base, TimestampMixin):
     # Feature gates
     allow_crawl: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     allow_file_upload: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    allow_custom_branding: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     is_default: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)

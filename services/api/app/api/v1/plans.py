@@ -41,6 +41,7 @@ def _plan_resp(p: Plan) -> PlanResponse:
         max_pages_per_crawl=p.max_pages_per_crawl,
         allow_crawl=p.allow_crawl,
         allow_file_upload=p.allow_file_upload,
+        allow_custom_branding=p.allow_custom_branding,
         is_active=p.is_active,
         is_default=p.is_default,
         features=p.features,

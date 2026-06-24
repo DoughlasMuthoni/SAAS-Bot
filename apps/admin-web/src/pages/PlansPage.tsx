@@ -14,6 +14,11 @@ interface Plan {
   max_bots: number
   max_sources: number
   max_conversations_per_month: number
+  max_team_members: number
+  max_pages_per_crawl: number
+  allow_crawl: boolean
+  allow_file_upload: boolean
+  allow_custom_branding: boolean
   is_active: boolean
   is_default: boolean
   sort_order: number
@@ -27,7 +32,27 @@ interface Org {
   name: string
   slug: string
   plan: string
+  is_suspended: boolean
+  user_count: number
+  bot_count: number
   created_at: string
+}
+
+interface OrgUserDetail {
+  id: string
+  email: string
+  full_name: string
+  role: string
+  is_active: boolean
+  last_login_at: string | null
+  created_at: string
+}
+
+interface OrgDetail extends Org {
+  suspension_reason: string | null
+  suspended_at: string | null
+  workspace_count: number
+  users: OrgUserDetail[]
 }
 
 interface Faq {
@@ -51,6 +76,9 @@ const BLANK_PLAN = {
   max_conversations_per_month: 500,
   is_active: true,
   is_default: false,
+  allow_crawl: false,
+  allow_file_upload: true,
+  allow_custom_branding: false,
   features: [''],
 }
 
@@ -139,6 +167,13 @@ export default function PlansPage() {
   const [orgPlanModal, setOrgPlanModal] = useState<Org | null>(null)
   const [selectedPlanSlug, setSelectedPlanSlug] = useState('')
 
+  // ── Org management state ──────────────────────────────────────
+  const [orgDetailModal, setOrgDetailModal] = useState<OrgDetail | null>(null)
+  const [orgDetailLoading, setOrgDetailLoading] = useState(false)
+  const [orgSuspendModal, setOrgSuspendModal] = useState<Org | null>(null)
+  const [suspendReason, setSuspendReason] = useState('')
+  const [orgDeleteTarget, setOrgDeleteTarget] = useState<Org | null>(null)
+
   // ── Local plan order (for optimistic reorder UI) ───────────────
   const [localPlans, setLocalPlans] = useState<Plan[]>([])
 
@@ -218,6 +253,45 @@ export default function PlansPage() {
     onError: (e: any) => alert(e?.response?.data?.detail || 'Failed to update plan.'),
   })
 
+  const suspendOrg = useMutation({
+    mutationFn: ({ orgId, reason }: { orgId: string; reason: string }) =>
+      api.put(`/admin/organizations/${orgId}/suspend`, { reason: reason || null }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['admin-orgs'] })
+      setOrgSuspendModal(null)
+      setSuspendReason('')
+    },
+    onError: (e: any) => alert(e?.response?.data?.detail || 'Failed to suspend organisation.'),
+  })
+
+  const unsuspendOrg = useMutation({
+    mutationFn: (orgId: string) => api.put(`/admin/organizations/${orgId}/unsuspend`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['admin-orgs'] }),
+    onError: (e: any) => alert(e?.response?.data?.detail || 'Failed to unsuspend organisation.'),
+  })
+
+  const deleteOrg = useMutation({
+    mutationFn: (orgId: string) => api.delete(`/admin/organizations/${orgId}`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['admin-orgs'] })
+      setOrgDeleteTarget(null)
+    },
+    onError: (e: any) => alert(e?.response?.data?.detail || 'Failed to delete organisation.'),
+  })
+
+  const openOrgDetail = async (orgId: string) => {
+    setOrgDetailLoading(true)
+    setOrgDetailModal(null)
+    try {
+      const res = await api.get(`/admin/organizations/${orgId}`)
+      setOrgDetailModal(res.data)
+    } catch {
+      alert('Failed to load organisation details.')
+    } finally {
+      setOrgDetailLoading(false)
+    }
+  }
+
   const createFaq = useMutation({
     mutationFn: (data: typeof BLANK_FAQ) => api.post('/admin/faqs', data),
     onSuccess: () => { invalidateFaqs(); closeFaqModal() },
@@ -272,6 +346,9 @@ export default function PlansPage() {
       max_conversations_per_month: p.max_conversations_per_month,
       is_active: p.is_active,
       is_default: p.is_default,
+      allow_crawl: p.allow_crawl ?? false,
+      allow_file_upload: p.allow_file_upload ?? true,
+      allow_custom_branding: (p as any).allow_custom_branding ?? false,
       features: p.features?.length ? p.features : [''],
     })
     setPlanFormError('')
@@ -486,19 +563,47 @@ export default function PlansPage() {
                     {/* Features */}
                     {plan.features && plan.features.length > 0 && (
                       <ul style={{ listStyle: 'none', padding: 0, margin: '0 0 14px', display: 'flex', flexDirection: 'column', gap: 4 }}>
-                        {plan.features.slice(0, 4).map((f, i) => (
-                          <li key={i} style={{ fontSize: 12, color: '#475569', display: 'flex', alignItems: 'flex-start', gap: 6 }}>
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="3" strokeLinecap="round" style={{ flexShrink: 0, marginTop: 2 }}>
-                              <polyline points="20 6 9 17 4 12"/>
-                            </svg>
-                            {f}
-                          </li>
-                        ))}
-                        {plan.features.length > 4 && (
-                          <li style={{ fontSize: 11, color: '#94a3b8' }}>+{plan.features.length - 4} more…</li>
+                        {plan.features.slice(0, 5).map((f, i) => {
+                          const excluded = f.startsWith('-')
+                          const label = excluded ? f.slice(1).trim() : f
+                          return (
+                            <li key={i} style={{ fontSize: 12, color: excluded ? '#9ca3af' : '#475569', display: 'flex', alignItems: 'flex-start', gap: 6, opacity: excluded ? 0.65 : 1 }}>
+                              {excluded ? (
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="3" strokeLinecap="round" style={{ flexShrink: 0, marginTop: 2 }}>
+                                  <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                                </svg>
+                              ) : (
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="3" strokeLinecap="round" style={{ flexShrink: 0, marginTop: 2 }}>
+                                  <polyline points="20 6 9 17 4 12"/>
+                                </svg>
+                              )}
+                              {label}
+                            </li>
+                          )
+                        })}
+                        {plan.features.length > 5 && (
+                          <li style={{ fontSize: 11, color: '#94a3b8' }}>+{plan.features.length - 5} more…</li>
                         )}
                       </ul>
                     )}
+
+                    {/* Feature gate badges */}
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 14 }}>
+                      {[
+                        { label: 'File upload', enabled: plan.allow_file_upload },
+                        { label: 'Web crawler', enabled: plan.allow_crawl },
+                        { label: 'Custom branding', enabled: (plan as any).allow_custom_branding ?? false },
+                      ].map(g => (
+                        <span key={g.label} style={{
+                          fontSize: 10.5, fontWeight: 600, padding: '2px 8px', borderRadius: 20,
+                          background: g.enabled ? '#f0fdf4' : '#f8fafc',
+                          color: g.enabled ? '#16a34a' : '#94a3b8',
+                          border: `1px solid ${g.enabled ? '#bbf7d0' : '#e2e8f0'}`,
+                        }}>
+                          {g.enabled ? '✓' : '✗'} {g.label}
+                        </span>
+                      ))}
+                    </div>
 
                     {/* Actions */}
                     <div style={{ display: 'flex', gap: 8, marginTop: 'auto', paddingTop: 4 }}>
@@ -549,35 +654,81 @@ export default function PlansPage() {
               <thead>
                 <tr>
                   <th>Organisation</th>
-                  <th>Slug</th>
-                  <th>Current Plan</th>
+                  <th>Status</th>
+                  <th>Plan</th>
+                  <th style={{ textAlign: 'center' }}>Users</th>
+                  <th style={{ textAlign: 'center' }}>Bots</th>
                   <th>Created</th>
                   <th></th>
                 </tr>
               </thead>
               <tbody>
                 {orgs.map(org => (
-                  <tr key={org.id}>
-                    <td style={{ fontWeight: 600, color: '#1e293b' }}>{org.name}</td>
-                    <td><code style={{ fontSize: 12 }}>{org.slug}</code></td>
+                  <tr key={org.id} style={{ opacity: org.is_suspended ? 0.7 : 1 }}>
+                    <td>
+                      <div style={{ fontWeight: 600, color: '#1e293b' }}>{org.name}</div>
+                      <code style={{ fontSize: 11, color: '#94a3b8' }}>{org.slug}</code>
+                    </td>
+                    <td>
+                      {org.is_suspended
+                        ? <span className="badge" style={{ background: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca', borderRadius: 6, fontSize: 11, padding: '3px 8px' }}>Suspended</span>
+                        : <span className="badge" style={{ background: '#f0fdf4', color: '#16a34a', border: '1px solid #bbf7d0', borderRadius: 6, fontSize: 11, padding: '3px 8px' }}>Active</span>
+                      }
+                    </td>
                     <td><PlanBadge slug={org.plan} plans={plans} /></td>
+                    <td style={{ textAlign: 'center', fontSize: 13 }}>{org.user_count}</td>
+                    <td style={{ textAlign: 'center', fontSize: 13 }}>{org.bot_count}</td>
                     <td style={{ fontSize: 12, color: '#94a3b8' }}>
                       {new Date(org.created_at).toLocaleDateString()}
                     </td>
                     <td>
-                      <button
-                        className="btn btn-sm btn-outline-primary"
-                        style={{ borderRadius: 8, fontSize: 12 }}
-                        onClick={() => { setOrgPlanModal(org); setSelectedPlanSlug(org.plan) }}
-                      >
-                        Change Plan
-                      </button>
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        <button
+                          className="btn btn-sm btn-outline-secondary"
+                          style={{ borderRadius: 8, fontSize: 11 }}
+                          onClick={() => openOrgDetail(org.id)}
+                        >
+                          Details
+                        </button>
+                        <button
+                          className="btn btn-sm btn-outline-primary"
+                          style={{ borderRadius: 8, fontSize: 11 }}
+                          onClick={() => { setOrgPlanModal(org); setSelectedPlanSlug(org.plan) }}
+                        >
+                          Plan
+                        </button>
+                        {org.is_suspended ? (
+                          <button
+                            className="btn btn-sm btn-outline-success"
+                            style={{ borderRadius: 8, fontSize: 11 }}
+                            disabled={unsuspendOrg.isPending}
+                            onClick={() => unsuspendOrg.mutate(org.id)}
+                          >
+                            Unsuspend
+                          </button>
+                        ) : (
+                          <button
+                            className="btn btn-sm btn-outline-warning"
+                            style={{ borderRadius: 8, fontSize: 11 }}
+                            onClick={() => { setOrgSuspendModal(org); setSuspendReason('') }}
+                          >
+                            Suspend
+                          </button>
+                        )}
+                        <button
+                          className="btn btn-sm btn-outline-danger"
+                          style={{ borderRadius: 8, fontSize: 11 }}
+                          onClick={() => setOrgDeleteTarget(org)}
+                        >
+                          Delete
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
                 {orgs.length === 0 && (
                   <tr>
-                    <td colSpan={5} style={{ textAlign: 'center', padding: '3rem', color: '#94a3b8' }}>
+                    <td colSpan={7} style={{ textAlign: 'center', padding: '3rem', color: '#94a3b8' }}>
                       No organisations found.
                     </td>
                   </tr>
@@ -787,27 +938,59 @@ export default function PlansPage() {
                   <div className="mb-3">
                     <label className="form-label fw-semibold" style={{ fontSize: 13 }}>
                       Features
-                      <span style={{ color: '#94a3b8', fontWeight: 400, marginLeft: 6, fontSize: 12 }}>shown on billing page</span>
+                      <span style={{ color: '#94a3b8', fontWeight: 400, marginLeft: 6, fontSize: 12 }}>shown on pricing page</span>
                     </label>
-                    {planForm.features.map((f, i) => (
-                      <div key={i} style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
-                        <input
-                          className="form-control" style={{ borderRadius: 9, fontSize: 13 }}
-                          value={f}
-                          onChange={e => updateFeature(i, e.target.value)}
-                          placeholder={`Feature ${i + 1}`}
-                        />
-                        {planForm.features.length > 1 && (
+                    <p style={{ fontSize: 11.5, color: '#94a3b8', margin: '0 0 8px' }}>
+                      Toggle ✅/❌ to show as included or excluded on the public pricing page.
+                    </p>
+                    {planForm.features.map((f, i) => {
+                      const excluded = f.startsWith('-')
+                      const label = excluded ? f.slice(1) : f
+                      return (
+                        <div key={i} style={{ display: 'flex', gap: 8, marginBottom: 8, alignItems: 'center' }}>
+                          {/* Include/exclude toggle */}
                           <button
                             type="button"
-                            style={{ background: 'none', border: 'none', color: '#dc2626', cursor: 'pointer', flexShrink: 0, padding: '0 4px' }}
-                            onClick={() => setPlanForm({ ...planForm, features: planForm.features.filter((_, j) => j !== i) })}
+                            title={excluded ? 'Mark as included' : 'Mark as excluded'}
+                            onClick={() => updateFeature(i, excluded ? label : `-${label}`)}
+                            style={{
+                              flexShrink: 0, width: 32, height: 34,
+                              background: excluded ? '#fef2f2' : '#f0fdf4',
+                              border: `1px solid ${excluded ? '#fecaca' : '#bbf7d0'}`,
+                              borderRadius: 8, cursor: 'pointer',
+                              display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              padding: 0,
+                            }}
                           >
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                            {excluded ? (
+                              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2.5" strokeLinecap="round">
+                                <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                              </svg>
+                            ) : (
+                              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2.5" strokeLinecap="round">
+                                <polyline points="20 6 9 17 4 12"/>
+                              </svg>
+                            )}
                           </button>
-                        )}
-                      </div>
-                    ))}
+                          <input
+                            className="form-control"
+                            style={{ borderRadius: 9, fontSize: 13, opacity: excluded ? 0.65 : 1 }}
+                            value={label}
+                            onChange={e => updateFeature(i, excluded ? `-${e.target.value}` : e.target.value)}
+                            placeholder={`Feature ${i + 1}`}
+                          />
+                          {planForm.features.length > 1 && (
+                            <button
+                              type="button"
+                              style={{ background: 'none', border: 'none', color: '#dc2626', cursor: 'pointer', flexShrink: 0, padding: '0 4px' }}
+                              onClick={() => setPlanForm({ ...planForm, features: planForm.features.filter((_, j) => j !== i) })}
+                            >
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                            </button>
+                          )}
+                        </div>
+                      )
+                    })}
                     <button
                       type="button"
                       className="btn btn-sm btn-outline-secondary"
@@ -820,25 +1003,46 @@ export default function PlansPage() {
 
                   <hr style={{ borderColor: '#f1f5f9', margin: '0 0 1rem' }} />
 
-                  <div style={{ display: 'flex', gap: 24 }}>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13, fontWeight: 500, color: '#374151' }}>
-                      <input
-                        type="checkbox"
-                        checked={planForm.is_active}
-                        onChange={e => setPlanForm({ ...planForm, is_active: e.target.checked })}
-                        style={{ width: 16, height: 16, accentColor: '#16a34a' }}
-                      />
-                      Active (visible to users)
-                    </label>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13, fontWeight: 500, color: '#374151' }}>
-                      <input
-                        type="checkbox"
-                        checked={planForm.is_default}
-                        onChange={e => setPlanForm({ ...planForm, is_default: e.target.checked })}
-                        style={{ width: 16, height: 16, accentColor: '#16a34a' }}
-                      />
-                      Default plan for new organisations
-                    </label>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+                    <p style={{ fontSize: 12, fontWeight: 600, color: '#374151', margin: '0 0 4px' }}>Feature Gates</p>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 20 }}>
+                      {[
+                        { field: 'allow_crawl' as const, label: 'Web crawler ingestion' },
+                        { field: 'allow_file_upload' as const, label: 'File upload (PDF, DOCX…)' },
+                        { field: 'allow_custom_branding' as const, label: 'Custom branding (hides "Powered by" badge)' },
+                      ].map(({ field, label }) => (
+                        <label key={field} style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13, fontWeight: 500, color: '#374151' }}>
+                          <input
+                            type="checkbox"
+                            checked={(planForm as any)[field]}
+                            onChange={e => setPlanForm({ ...planForm, [field]: e.target.checked })}
+                            style={{ width: 16, height: 16, accentColor: '#16a34a' }}
+                          />
+                          {label}
+                        </label>
+                      ))}
+                    </div>
+                    <hr style={{ borderColor: '#f1f5f9', margin: '0' }} />
+                    <div style={{ display: 'flex', gap: 24 }}>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13, fontWeight: 500, color: '#374151' }}>
+                        <input
+                          type="checkbox"
+                          checked={planForm.is_active}
+                          onChange={e => setPlanForm({ ...planForm, is_active: e.target.checked })}
+                          style={{ width: 16, height: 16, accentColor: '#16a34a' }}
+                        />
+                        Active (visible to users)
+                      </label>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13, fontWeight: 500, color: '#374151' }}>
+                        <input
+                          type="checkbox"
+                          checked={planForm.is_default}
+                          onChange={e => setPlanForm({ ...planForm, is_default: e.target.checked })}
+                          style={{ width: 16, height: 16, accentColor: '#16a34a' }}
+                        />
+                        Default plan for new organisations
+                      </label>
+                    </div>
                   </div>
                 </div>
 
@@ -1051,6 +1255,161 @@ export default function PlansPage() {
                 >
                   {setOrgPlan.isPending ? 'Saving…' : 'Assign Plan'}
                 </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Org Detail Modal ─────────────────────────────────── */}
+      {(orgDetailLoading || orgDetailModal) && (
+        <div className="modal show d-block" style={{ background: 'rgba(0,0,0,.55)', zIndex: 1500 }}>
+          <div className="modal-dialog" style={{ maxWidth: 640, marginTop: '8vh' }}>
+            <div className="modal-content" style={{ borderRadius: 14, border: 'none', overflow: 'hidden' }}>
+              <div style={{ background: 'linear-gradient(135deg,#1e40af,#2563eb)', padding: '1.25rem 1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <h5 style={{ color: '#fff', margin: 0, fontWeight: 700 }}>{orgDetailModal?.name ?? 'Loading…'}</h5>
+                  {orgDetailModal && <p style={{ color: 'rgba(255,255,255,.75)', fontSize: 13, margin: '2px 0 0' }}>{orgDetailModal.slug} · {orgDetailModal.plan} plan</p>}
+                </div>
+                <button className="btn btn-sm" style={{ color: '#fff', background: 'rgba(255,255,255,.2)', borderRadius: 8 }} onClick={() => setOrgDetailModal(null)}>✕</button>
+              </div>
+              {orgDetailLoading ? (
+                <div style={{ padding: '3rem', textAlign: 'center' }}><div className="cb-spinner" /></div>
+              ) : orgDetailModal && (
+                <div style={{ padding: '1.5rem' }}>
+                  {/* Stats row */}
+                  <div style={{ display: 'flex', gap: 12, marginBottom: 20 }}>
+                    {[
+                      { label: 'Users', value: orgDetailModal.user_count },
+                      { label: 'Bots', value: orgDetailModal.bot_count },
+                      { label: 'Workspaces', value: orgDetailModal.workspace_count },
+                    ].map(s => (
+                      <div key={s.label} style={{ flex: 1, background: '#f8fafc', borderRadius: 10, padding: '12px 16px', textAlign: 'center' }}>
+                        <div style={{ fontSize: 22, fontWeight: 800, color: '#1e293b' }}>{s.value}</div>
+                        <div style={{ fontSize: 12, color: '#94a3b8' }}>{s.label}</div>
+                      </div>
+                    ))}
+                    <div style={{ flex: 1, background: orgDetailModal.is_suspended ? '#fef2f2' : '#f0fdf4', borderRadius: 10, padding: '12px 16px', textAlign: 'center' }}>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: orgDetailModal.is_suspended ? '#dc2626' : '#16a34a' }}>
+                        {orgDetailModal.is_suspended ? 'Suspended' : 'Active'}
+                      </div>
+                      <div style={{ fontSize: 12, color: '#94a3b8' }}>Status</div>
+                    </div>
+                  </div>
+                  {orgDetailModal.is_suspended && orgDetailModal.suspension_reason && (
+                    <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 9, padding: '10px 14px', marginBottom: 16, fontSize: 13, color: '#dc2626' }}>
+                      <strong>Suspension reason:</strong> {orgDetailModal.suspension_reason}
+                    </div>
+                  )}
+                  {/* User list */}
+                  <div style={{ fontWeight: 700, fontSize: 13, color: '#1e293b', marginBottom: 8 }}>Team Members</div>
+                  <div style={{ border: '1px solid #e2e8f0', borderRadius: 10, overflow: 'hidden' }}>
+                    <table className="table table-sm align-middle mb-0">
+                      <thead style={{ background: '#f8fafc' }}>
+                        <tr>
+                          <th style={{ fontSize: 12 }}>Name / Email</th>
+                          <th style={{ fontSize: 12 }}>Role</th>
+                          <th style={{ fontSize: 12 }}>Status</th>
+                          <th style={{ fontSize: 12 }}>Joined</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {orgDetailModal.users.map(u => (
+                          <tr key={u.id}>
+                            <td>
+                              <div style={{ fontSize: 13, fontWeight: 600, color: '#1e293b' }}>{u.full_name}</div>
+                              <div style={{ fontSize: 11, color: '#94a3b8' }}>{u.email}</div>
+                            </td>
+                            <td><span style={{ fontSize: 11, background: '#f1f5f9', padding: '2px 8px', borderRadius: 5, color: '#475569' }}>{u.role}</span></td>
+                            <td>
+                              {u.is_active
+                                ? <span style={{ fontSize: 11, color: '#16a34a' }}>Active</span>
+                                : <span style={{ fontSize: 11, color: '#dc2626' }}>Inactive</span>
+                              }
+                            </td>
+                            <td style={{ fontSize: 11, color: '#94a3b8' }}>{new Date(u.created_at).toLocaleDateString()}</td>
+                          </tr>
+                        ))}
+                        {orgDetailModal.users.length === 0 && (
+                          <tr><td colSpan={4} style={{ textAlign: 'center', color: '#94a3b8', padding: '1rem', fontSize: 13 }}>No users.</td></tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div style={{ marginTop: 16, display: 'flex', justifyContent: 'flex-end' }}>
+                    <button className="btn btn-outline-secondary" style={{ borderRadius: 9 }} onClick={() => setOrgDetailModal(null)}>Close</button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Suspend Org Modal ────────────────────────────────── */}
+      {orgSuspendModal && (
+        <div className="modal show d-block" style={{ background: 'rgba(0,0,0,.55)', zIndex: 1500 }}>
+          <div className="modal-dialog" style={{ maxWidth: 440, marginTop: '20vh' }}>
+            <div className="modal-content" style={{ borderRadius: 14, border: 'none', overflow: 'hidden' }}>
+              <div style={{ background: 'linear-gradient(135deg,#b45309,#d97706)', padding: '1.25rem 1.5rem' }}>
+                <h5 style={{ color: '#fff', margin: 0, fontWeight: 700 }}>Suspend Organisation</h5>
+                <p style={{ color: 'rgba(255,255,255,.8)', fontSize: 13, margin: '2px 0 0' }}>{orgSuspendModal.name}</p>
+              </div>
+              <div style={{ padding: '1.5rem' }}>
+                <p style={{ fontSize: 13.5, color: '#475569', marginBottom: 14 }}>
+                  Suspending this organisation will block all widget access for its bots. Users will still be able to log in to the admin panel.
+                </p>
+                <label className="form-label fw-semibold" style={{ fontSize: 13 }}>Reason (optional)</label>
+                <textarea
+                  className="form-control"
+                  style={{ borderRadius: 9, fontSize: 13 }}
+                  rows={3}
+                  placeholder="e.g. Payment overdue, policy violation…"
+                  value={suspendReason}
+                  onChange={e => setSuspendReason(e.target.value)}
+                />
+              </div>
+              <div style={{ padding: '0 1.5rem 1.5rem', display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+                <button className="btn btn-outline-secondary" style={{ borderRadius: 9 }} onClick={() => setOrgSuspendModal(null)}>Cancel</button>
+                <button
+                  className="btn btn-warning"
+                  style={{ borderRadius: 9, fontWeight: 600 }}
+                  disabled={suspendOrg.isPending}
+                  onClick={() => suspendOrg.mutate({ orgId: orgSuspendModal.id, reason: suspendReason })}
+                >
+                  {suspendOrg.isPending ? 'Suspending…' : 'Suspend'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Delete Org Confirmation ───────────────────────────── */}
+      {orgDeleteTarget && (
+        <div className="modal show d-block" style={{ background: 'rgba(0,0,0,.55)', zIndex: 1500 }}>
+          <div className="modal-dialog" style={{ maxWidth: 400, marginTop: '20vh' }}>
+            <div className="modal-content" style={{ borderRadius: 14, border: 'none' }}>
+              <div style={{ padding: '1.5rem', textAlign: 'center' }}>
+                <div style={{ fontSize: 36, marginBottom: 12 }}>⚠️</div>
+                <h5 style={{ fontWeight: 800, margin: '0 0 8px', color: '#0f172a' }}>Delete Organisation?</h5>
+                <p style={{ color: '#64748b', fontSize: 13.5, margin: '0 0 4px' }}>
+                  <strong>{orgDeleteTarget.name}</strong>
+                </p>
+                <p style={{ color: '#94a3b8', fontSize: 13, margin: '0 0 1.5rem' }}>
+                  This will soft-delete the organisation and all its data will be hidden. This action can be reversed manually in the database.
+                </p>
+                <div style={{ display: 'flex', gap: 10, justifyContent: 'center' }}>
+                  <button className="btn btn-outline-secondary" style={{ borderRadius: 9, minWidth: 100 }} onClick={() => setOrgDeleteTarget(null)}>Cancel</button>
+                  <button
+                    className="btn btn-danger"
+                    style={{ borderRadius: 9, minWidth: 100 }}
+                    disabled={deleteOrg.isPending}
+                    onClick={() => deleteOrg.mutate(orgDeleteTarget.id)}
+                  >
+                    {deleteOrg.isPending ? 'Deleting…' : 'Delete'}
+                  </button>
+                </div>
               </div>
             </div>
           </div>

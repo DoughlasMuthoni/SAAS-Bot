@@ -16,6 +16,7 @@ class PlanCreate(BaseModel):
     max_pages_per_crawl: int = Field(default=0)
     allow_crawl: bool = False
     allow_file_upload: bool = True
+    allow_custom_branding: bool = False
     is_active: bool = True
     is_default: bool = False
     features: list[str] | None = None
@@ -40,6 +41,7 @@ class PlanUpdate(BaseModel):
     max_pages_per_crawl: int | None = None
     allow_crawl: bool | None = None
     allow_file_upload: bool | None = None
+    allow_custom_branding: bool | None = None
     is_active: bool | None = None
     is_default: bool | None = None
     features: list[str] | None = None
@@ -68,6 +70,7 @@ class PlanResponse(BaseModel):
     max_pages_per_crawl: int
     allow_crawl: bool
     allow_file_upload: bool
+    allow_custom_branding: bool
     is_active: bool
     is_default: bool
     features: list[str] | None
@@ -75,6 +78,10 @@ class PlanResponse(BaseModel):
     updated_at: str
 
     model_config = {"from_attributes": True}
+
+
+class OrgSuspendRequest(BaseModel):
+    reason: str | None = Field(default=None, max_length=500)
 
 
 class OrgPlanUpdate(BaseModel):
@@ -86,6 +93,34 @@ class OrgResponse(BaseModel):
     name: str
     slug: str
     plan: str
+    is_suspended: bool
+    user_count: int = 0
+    bot_count: int = 0
     created_at: str
 
     model_config = {"from_attributes": True}
+
+
+class OrgUserDetail(BaseModel):
+    id: str
+    email: str
+    full_name: str
+    role: str
+    is_active: bool
+    last_login_at: str | None
+    created_at: str
+
+
+class OrgDetail(BaseModel):
+    id: str
+    name: str
+    slug: str
+    plan: str
+    is_suspended: bool
+    suspension_reason: str | None
+    suspended_at: str | None
+    user_count: int
+    bot_count: int
+    workspace_count: int
+    users: list[OrgUserDetail]
+    created_at: str

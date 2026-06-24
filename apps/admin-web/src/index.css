@@ -264,9 +264,11 @@ body { background: var(--cb-page-bg); color: #1e293b; }
   min-height: 100vh;
   background: linear-gradient(135deg, #0f172a 0%, #1e293b 60%, #0f172a 100%);
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 1rem;
+  padding: 2rem 1rem;
+  gap: 0;
 }
 
 .cb-login-card {
@@ -286,6 +288,29 @@ body { background: var(--cb-page-bg); color: #1e293b; }
 }
 
 .cb-login-body { padding: 2rem; }
+
+/* ── Public footer links (login / register page) ─────────────── */
+.cb-public-footer-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 500;
+  color: rgba(255,255,255,.55);
+  text-decoration: none;
+  padding: 6px 13px;
+  border-radius: 20px;
+  border: 1px solid rgba(255,255,255,.12);
+  background: rgba(255,255,255,.06);
+  transition: color .15s, background .15s, border-color .15s;
+  letter-spacing: .01em;
+}
+.cb-public-footer-link:hover {
+  color: #fff;
+  background: rgba(255,255,255,.14);
+  border-color: rgba(255,255,255,.28);
+  text-decoration: none;
+}
 
 /* ── Form focus ──────────────────────────────────────────────── */
 .form-control:focus,
