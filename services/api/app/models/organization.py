@@ -21,3 +21,4 @@ class Organization(Base, TimestampMixin, SoftDeleteMixin):
     workspaces: Mapped[list["Workspace"]] = relationship(back_populates="organization")  # noqa: F821
     users: Mapped[list["User"]] = relationship(back_populates="organization")  # noqa: F821
     api_keys: Mapped[list["ApiKey"]] = relationship(back_populates="organization")  # noqa: F821
+    invoices: Mapped[list["Invoice"]] = relationship(back_populates="organization")  # noqa: F821

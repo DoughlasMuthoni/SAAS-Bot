@@ -21,6 +21,10 @@ import ResetPasswordPage from './pages/ResetPasswordPage'
 import PrivacyPolicyPage from './pages/PrivacyPolicyPage'
 import TermsOfServicePage from './pages/TermsOfServicePage'
 import SecurityPage from './pages/SecurityPage'
+import PlatformOrgsPage from './pages/PlatformOrgsPage'
+import PlatformOrgDetailPage from './pages/PlatformOrgDetailPage'
+import PlatformInvoicesPage from './pages/PlatformInvoicesPage'
+import PlatformInvoiceFormPage from './pages/PlatformInvoiceFormPage'
 
 export default function App() {
   return (
@@ -54,6 +58,11 @@ export default function App() {
         <Route path="privacy" element={<PrivacyPolicyPage />} />
         <Route path="terms" element={<TermsOfServicePage />} />
         <Route path="security" element={<SecurityPage />} />
+        <Route path="platform/orgs" element={<PlatformOrgsPage />} />
+        <Route path="platform/orgs/:orgId" element={<PlatformOrgDetailPage />} />
+        <Route path="platform/invoices" element={<PlatformInvoicesPage />} />
+        <Route path="platform/invoices/new" element={<PlatformInvoiceFormPage />} />
+        <Route path="platform/invoices/:invoiceId/edit" element={<PlatformInvoiceFormPage />} />
       </Route>
     </Routes>
   )

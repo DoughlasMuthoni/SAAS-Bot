@@ -142,3 +142,112 @@ async def send_lead_notification_email(
             logger.info("Lead notification sent", email=recipient, bot=bot_name)
         except Exception as exc:
             logger.error("Failed to send lead notification", email=recipient, error=str(exc))
+
+
+async def send_invoice_email(
+    to_emails: list[str],
+    invoice: "InvoiceResponse",  # type: ignore[name-defined]  # avoid circular
+    org_name: str,
+) -> None:
+    settings = get_settings()
+
+    if not to_emails:
+        return
+
+    if not settings.SMTP_HOST:
+        logger.info(
+            "SMTP not configured — invoice email skipped",
+            invoice=invoice.invoice_number,
+            org=org_name,
+        )
+        return
+
+    rows_html = "".join(
+        f"""<tr>
+          <td style="padding:8px 0;font-size:13px;color:#64748b;border-bottom:1px solid #f1f5f9">{item.description}</td>
+          <td style="padding:8px 0;font-size:13px;text-align:center;color:#64748b;border-bottom:1px solid #f1f5f9">{item.quantity}</td>
+          <td style="padding:8px 0;font-size:13px;text-align:right;color:#64748b;border-bottom:1px solid #f1f5f9">{invoice.currency} {item.unit_price:,.2f}</td>
+          <td style="padding:8px 0;font-size:13px;text-align:right;font-weight:600;border-bottom:1px solid #f1f5f9">{invoice.currency} {item.subtotal:,.2f}</td>
+        </tr>"""
+        for item in invoice.items
+    )
+
+    tax_row = ""
+    if float(invoice.tax_rate) > 0:
+        tax_row = f'<tr><td colspan="3" style="text-align:right;font-size:13px;color:#64748b;padding:6px 0">Tax ({invoice.tax_rate}%)</td><td style="text-align:right;font-size:13px;padding:6px 0">{invoice.currency} {invoice.tax_amount:,.2f}</td></tr>'
+
+    due_str = f"Due: {invoice.due_date}" if invoice.due_date else ""
+
+    html = f"""
+<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;max-width:560px;margin:0 auto;padding:32px;color:#0f172a">
+  <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:24px">
+    <div>
+      <h2 style="font-size:1.4rem;font-weight:800;margin:0 0 4px">Invoice {invoice.invoice_number}</h2>
+      <p style="color:#64748b;font-size:13px;margin:0">To: <strong>{org_name}</strong></p>
+    </div>
+    <span style="background:#dbeafe;color:#1d4ed8;padding:4px 12px;border-radius:20px;font-size:11px;font-weight:700;letter-spacing:.04em">
+      {invoice.status.upper()}
+    </span>
+  </div>
+
+  <div style="display:flex;gap:24px;margin-bottom:24px">
+    <div><span style="font-size:11px;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em">Issue Date</span><br><span style="font-weight:600;font-size:13px">{invoice.issue_date}</span></div>
+    {f'<div><span style="font-size:11px;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em">Due Date</span><br><span style="font-weight:600;font-size:13px">{invoice.due_date}</span></div>' if invoice.due_date else ''}
+  </div>
+
+  <table style="width:100%;border-collapse:collapse;margin-bottom:16px">
+    <thead>
+      <tr style="border-bottom:2px solid #e2e8f0">
+        <th style="text-align:left;font-size:11px;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em;padding-bottom:8px">Description</th>
+        <th style="text-align:center;font-size:11px;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em;padding-bottom:8px">Qty</th>
+        <th style="text-align:right;font-size:11px;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em;padding-bottom:8px">Unit Price</th>
+        <th style="text-align:right;font-size:11px;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em;padding-bottom:8px">Amount</th>
+      </tr>
+    </thead>
+    <tbody>{rows_html}</tbody>
+  </table>
+
+  <table style="width:100%;border-collapse:collapse;margin-bottom:24px">
+    <tr><td colspan="3" style="text-align:right;font-size:13px;color:#64748b;padding:6px 0">Subtotal</td><td style="text-align:right;font-size:13px;padding:6px 0">{invoice.currency} {invoice.subtotal:,.2f}</td></tr>
+    {tax_row}
+    <tr style="border-top:2px solid #0f172a">
+      <td colspan="3" style="text-align:right;font-size:15px;font-weight:800;padding:10px 0">Total</td>
+      <td style="text-align:right;font-size:15px;font-weight:800;padding:10px 0">{invoice.currency} {invoice.total:,.2f}</td>
+    </tr>
+  </table>
+
+  {f'<p style="background:#f8fafc;border-left:3px solid #e2e8f0;padding:12px 16px;font-size:13px;color:#64748b;margin:0 0 24px;border-radius:4px">{invoice.notes}</p>' if invoice.notes else ''}
+
+  <p style="font-size:13px;color:#64748b;margin:0 0 8px">Please remit payment by {invoice.due_date or "the due date"}. Contact us if you have any questions.</p>
+
+  <hr style="border:none;border-top:1px solid #e2e8f0;margin:24px 0 16px">
+  <p style="color:#94a3b8;font-size:11px;margin:0">DG ChatBot · Douglas Githui Tech Creatives · Kenya</p>
+</div>
+"""
+
+    plain = (
+        f"Invoice {invoice.invoice_number} — {org_name}\n\n"
+        f"Issue date: {invoice.issue_date}\n"
+        + (f"Due date: {invoice.due_date}\n" if invoice.due_date else "")
+        + f"Total: {invoice.currency} {invoice.total:,.2f}\n\n"
+        + (f"Notes: {invoice.notes}\n\n" if invoice.notes else "")
+        + "Please remit payment by the due date. Contact us if you have questions."
+    )
+
+    for recipient in to_emails:
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = f"Invoice {invoice.invoice_number} from DG ChatBot — {invoice.currency} {invoice.total:,.2f}"
+        msg["From"] = settings.SMTP_FROM_EMAIL
+        msg["To"] = recipient
+        msg.attach(MIMEText(plain, "plain"))
+        msg.attach(MIMEText(html, "html"))
+        try:
+            with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT) as smtp:
+                if settings.SMTP_TLS:
+                    smtp.starttls()
+                if settings.SMTP_USER:
+                    smtp.login(settings.SMTP_USER, settings.SMTP_PASSWORD)
+                smtp.send_message(msg)
+            logger.info("Invoice email sent", email=recipient, invoice=invoice.invoice_number)
+        except Exception as exc:
+            logger.error("Failed to send invoice email", email=recipient, error=str(exc))

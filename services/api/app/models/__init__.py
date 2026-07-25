@@ -20,6 +20,7 @@ from .plan import Plan
 from .platform_faq import PlatformFaq
 from .platform_page import PlatformPage
 from .review import Review
+from .invoice import Invoice, InvoiceItem
 
 __all__ = [
     "Base",
@@ -43,4 +44,6 @@ __all__ = [
     "Plan",
     "PlatformFaq",
     "PlatformPage",
+    "Invoice",
+    "InvoiceItem",
 ]
