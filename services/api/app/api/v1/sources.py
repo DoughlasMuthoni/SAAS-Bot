@@ -131,6 +131,23 @@ async def crawl_source(
     return _to_response(source)
 
 
+@router.delete("/{source_id}", status_code=204)
+async def delete_source(
+    source_id: str,
+    workspace_id: str,
+    db: AsyncSession = Depends(get_db),
+    user: User = _manager,
+):
+    source = await SourceRepository.get_by_id(db, source_id, workspace_id)
+    if source is None:
+        raise HTTPException(status_code=404, detail="Source not found")
+    from app.services.ingestion_service import IngestionService
+    await IngestionService.delete_source_embeddings(db, source_id, workspace_id)
+    from datetime import datetime, timezone
+    source.deleted_at = datetime.now(timezone.utc)
+    await db.commit()
+
+
 @router.post("/{source_id}/reindex", response_model=KnowledgeSourceResponse)
 async def reindex_source(
     source_id: str,

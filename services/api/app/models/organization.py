@@ -13,6 +13,7 @@ class Organization(Base, TimestampMixin, SoftDeleteMixin):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     slug: Mapped[str] = mapped_column(String(100), unique=True, nullable=False, index=True)
     plan: Mapped[str] = mapped_column(String(100), nullable=False, default="free")
+    plan_expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     settings: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     suspended_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     suspension_reason: Mapped[str | None] = mapped_column(String(500), nullable=True)

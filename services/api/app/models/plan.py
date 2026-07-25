@@ -22,6 +22,9 @@ class Plan(Base, TimestampMixin):
     max_team_members: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     max_pages_per_crawl: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
+    # 0 = no expiry; >0 = plan expires N days after org signup
+    trial_days: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
     # Feature gates
     allow_crawl: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     allow_file_upload: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)

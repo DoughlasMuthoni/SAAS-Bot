@@ -60,6 +60,7 @@ const PLAN_LABELS: Record<string, { label: string; color: string; bg: string }> 
 
 interface UsageData {
   plan: string
+  plan_expires_at?: string | null
   bots:          { used: number; limit: number }
   sources:       { used: number; limit: number }
   conversations: { used: number; limit: number }
@@ -87,9 +88,17 @@ function limitStr(v: number) {
   return v === -1 ? 'unlimited' : v.toLocaleString()
 }
 
+function trialCountdown(expiresAt: string | null | undefined): { daysLeft: number; expired: boolean } | null {
+  if (!expiresAt) return null
+  const diff = new Date(expiresAt).getTime() - Date.now()
+  const daysLeft = Math.ceil(diff / (1000 * 60 * 60 * 24))
+  return { daysLeft: Math.max(daysLeft, 0), expired: diff <= 0 }
+}
+
 export default function UsageMeter({ data, compact = false }: Props) {
   const navigate = useNavigate()
   const planMeta = PLAN_LABELS[data.plan] ?? PLAN_LABELS.free
+  const trial = data.plan === 'free' ? trialCountdown(data.plan_expires_at) : null
 
   const { data: plans = [] } = useQuery<ApiPlan[]>({
     queryKey: ['plans-public'],
@@ -137,6 +146,43 @@ export default function UsageMeter({ data, compact = false }: Props) {
           )}
         </div>
       </div>
+
+      {/* Trial countdown banner */}
+      {trial && (
+        <div style={{
+          marginBottom: 14,
+          padding: '10px 14px',
+          borderRadius: 8,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 10,
+          background: trial.expired ? '#fef2f2' : trial.daysLeft <= 1 ? '#fff7ed' : '#f0f9ff',
+          border: `1px solid ${trial.expired ? '#fecaca' : trial.daysLeft <= 1 ? '#fed7aa' : '#bae6fd'}`,
+          fontSize: 13,
+          color: trial.expired ? '#dc2626' : trial.daysLeft <= 1 ? '#c2410c' : '#0369a1',
+        }}>
+          <span style={{ fontSize: 18 }}>{trial.expired ? '🔒' : trial.daysLeft <= 1 ? '⚠️' : '⏳'}</span>
+          <div style={{ flex: 1 }}>
+            {trial.expired
+              ? <><strong>Free trial expired.</strong> Your chatbot is no longer accepting new conversations.</>
+              : trial.daysLeft <= 1
+              ? <><strong>Last day of your free trial!</strong> Upgrade today to keep your chatbot running.</>
+              : <><strong>{trial.daysLeft} day{trial.daysLeft !== 1 ? 's' : ''} left</strong> on your free trial.</>
+            }
+          </div>
+          <button
+            onClick={() => navigate('/billing')}
+            style={{
+              fontSize: 12, fontWeight: 700,
+              padding: '4px 12px', borderRadius: 20,
+              background: trial.expired ? '#dc2626' : trial.daysLeft <= 1 ? '#ea580c' : '#0284c7',
+              color: '#fff', border: 'none', cursor: 'pointer', whiteSpace: 'nowrap',
+            }}
+          >
+            Upgrade now
+          </button>
+        </div>
+      )}
 
       {/* Numeric limits */}
       <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap', marginBottom: 14 }}>

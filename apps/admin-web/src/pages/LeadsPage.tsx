@@ -4,9 +4,13 @@ import { useNavigate } from 'react-router-dom'
 import api from '../lib/api'
 import { useWorkspaceId } from '../hooks/useWorkspaceId'
 import { useRole } from '../hooks/useRole'
+import BotTabBar from '../components/BotTabBar'
+
+interface Bot { id: string; name: string; brand_color: string }
 
 interface Lead {
   id: string
+  bot_id: string | null
   name: string | null
   email: string | null
   phone: string | null
@@ -83,8 +87,15 @@ export default function LeadsPage() {
   const [statusFilter, setStatusFilter] = useState('')
   const [search, setSearch] = useState('')
   const [expanded, setExpanded] = useState<string | null>(null)
+  const [activeBotId, setActiveBotId] = useState('all')
 
-  const { data: leads = [], isLoading } = useQuery<Lead[]>({
+  const { data: bots = [] } = useQuery<Bot[]>({
+    queryKey: ['bots', workspaceId],
+    queryFn: () => api.get(`/bots?workspace_id=${workspaceId}`).then(r => r.data),
+    enabled: !!workspaceId,
+  })
+
+  const { data: allLeads = [], isLoading } = useQuery<Lead[]>({
     queryKey: ['leads', workspaceId],
     queryFn: () => api.get(`/leads?workspace_id=${workspaceId}&limit=100`).then(r => r.data),
     enabled: !!workspaceId,
@@ -96,14 +107,17 @@ export default function LeadsPage() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['leads', workspaceId] }),
   })
 
+  const botLeads = activeBotId === 'all' ? allLeads : allLeads.filter(l => l.bot_id === activeBotId)
+  const botCounts = Object.fromEntries(bots.map(b => [b.id, allLeads.filter(l => l.bot_id === b.id).length]))
+
   const counts = {
-    total: leads.length,
-    new: leads.filter(l => l.status === 'new').length,
-    contacted: leads.filter(l => l.status === 'contacted').length,
-    closed: leads.filter(l => l.status === 'closed').length,
+    total: botLeads.length,
+    new: botLeads.filter(l => l.status === 'new').length,
+    contacted: botLeads.filter(l => l.status === 'contacted').length,
+    closed: botLeads.filter(l => l.status === 'closed').length,
   }
 
-  const filtered = leads.filter(l => {
+  const filtered = botLeads.filter(l => {
     if (statusFilter && l.status !== statusFilter) return false
     if (search) {
       const q = search.toLowerCase()
@@ -127,16 +141,25 @@ export default function LeadsPage() {
             Visitors who requested follow-up from your chatbot.
           </p>
         </div>
-        {leads.length > 0 && (
+        {allLeads.length > 0 && (
           <button
             className="btn btn-sm"
             style={{ fontWeight: 600, border: '1px solid #e2e8f0', background: '#fff', color: '#374151' }}
-            onClick={() => exportCsv(leads)}
+            onClick={() => exportCsv(botLeads)}
           >
             Export CSV
           </button>
         )}
       </div>
+
+      {/* Bot filter tabs */}
+      <BotTabBar
+        bots={bots}
+        activeId={activeBotId}
+        onChange={setActiveBotId}
+        counts={botCounts}
+        totalCount={allLeads.length}
+      />
 
       {/* Stats */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 24 }}>
@@ -191,10 +214,10 @@ export default function LeadsPage() {
         <div className="card" style={{ padding: 60, textAlign: 'center' }}>
           <div style={{ fontSize: 36, marginBottom: 12 }}>📋</div>
           <div style={{ fontWeight: 700, color: '#0f172a', marginBottom: 6 }}>
-            {leads.length === 0 ? 'No leads yet' : 'No results'}
+            {allLeads.length === 0 ? 'No leads yet' : 'No results'}
           </div>
           <p style={{ color: '#64748b', fontSize: 13.5, margin: 0 }}>
-            {leads.length === 0
+            {allLeads.length === 0
               ? 'When visitors request a follow-up through your chatbot, they appear here.'
               : 'Try adjusting your search or filter.'}
           </p>
@@ -333,7 +356,7 @@ export default function LeadsPage() {
 
       {filtered.length > 0 && (
         <div style={{ marginTop: 12, fontSize: 12, color: '#94a3b8', textAlign: 'right' }}>
-          Showing {filtered.length} of {leads.length} leads
+          Showing {filtered.length} of {botLeads.length} leads
         </div>
       )}
     </div>

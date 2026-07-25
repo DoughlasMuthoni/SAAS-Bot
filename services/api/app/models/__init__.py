@@ -19,6 +19,7 @@ from .usage_event import UsageEvent
 from .plan import Plan
 from .platform_faq import PlatformFaq
 from .platform_page import PlatformPage
+from .review import Review
 
 __all__ = [
     "Base",

@@ -45,6 +45,11 @@ export default function BotsPage() {
     enabled: !!workspaceId,
   })
 
+  const deleteBot = useMutation({
+    mutationFn: (botId: string) => api.delete(`/bots/${botId}?workspace_id=${workspaceId}`),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['bots', workspaceId] }),
+  })
+
   const createBot = useMutation({
     mutationFn: (data: CreateBotForm) =>
       api.post('/bots', { ...data, workspace_id: workspaceId }).then((r) => r.data),
@@ -111,12 +116,27 @@ export default function BotsPage() {
                   <td><code className="small text-muted">{bot.public_key}</code></td>
                   <td className="small text-muted">{new Date(bot.created_at).toLocaleDateString()}</td>
                   <td>
-                    <button
-                      className="btn btn-sm btn-outline-primary"
-                      onClick={() => navigate(`/bots/${bot.id}?workspace_id=${workspaceId}`)}
-                    >
-                      Settings
-                    </button>
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      <button
+                        className="btn btn-sm btn-outline-primary"
+                        onClick={() => navigate(`/bots/${bot.id}?workspace_id=${workspaceId}`)}
+                      >
+                        Settings
+                      </button>
+                      {isAdmin && (
+                        <button
+                          className="btn btn-sm btn-outline-danger"
+                          disabled={deleteBot.isPending}
+                          onClick={() => {
+                            if (window.confirm(`Delete "${bot.name}"? All its knowledge sources and conversations will be permanently removed.`)) {
+                              deleteBot.mutate(bot.id)
+                            }
+                          }}
+                        >
+                          Delete
+                        </button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}

@@ -3,9 +3,13 @@ import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import api from '../lib/api'
 import { useWorkspaceId } from '../hooks/useWorkspaceId'
+import BotTabBar from '../components/BotTabBar'
+
+interface Bot { id: string; name: string; brand_color: string }
 
 interface Conversation {
   id: string
+  bot_id: string
   session_id: string
   status: string
   message_count: number
@@ -47,8 +51,15 @@ export default function ConversationsPage() {
   const workspaceId = useWorkspaceId()
   const navigate = useNavigate()
   const [statusFilter, setStatusFilter] = useState('')
+  const [activeBotId, setActiveBotId] = useState('all')
 
-  const { data: convs = [], isLoading } = useQuery<Conversation[]>({
+  const { data: bots = [] } = useQuery<Bot[]>({
+    queryKey: ['bots', workspaceId],
+    queryFn: () => api.get(`/bots?workspace_id=${workspaceId}`).then(r => r.data),
+    enabled: !!workspaceId,
+  })
+
+  const { data: allConvs = [], isLoading } = useQuery<Conversation[]>({
     queryKey: ['conversations', workspaceId, statusFilter],
     queryFn: () => {
       const params = new URLSearchParams({ workspace_id: workspaceId, limit: '100' })
@@ -58,6 +69,10 @@ export default function ConversationsPage() {
     enabled: !!workspaceId,
     refetchInterval: 10000,
   })
+
+  const convs = activeBotId === 'all' ? allConvs : allConvs.filter(c => c.bot_id === activeBotId)
+
+  const botCounts = Object.fromEntries(bots.map(b => [b.id, allConvs.filter(c => c.bot_id === b.id).length]))
 
   const counts = {
     total:      convs.length,
@@ -76,6 +91,15 @@ export default function ConversationsPage() {
           Every chat session from your embedded bots.
         </p>
       </div>
+
+      {/* Bot filter tabs */}
+      <BotTabBar
+        bots={bots}
+        activeId={activeBotId}
+        onChange={setActiveBotId}
+        counts={botCounts}
+        totalCount={allConvs.length}
+      />
 
       {/* Stats */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 12, marginBottom: 24 }}>

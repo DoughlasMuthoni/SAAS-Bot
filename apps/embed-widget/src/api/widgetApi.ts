@@ -6,7 +6,13 @@ async function apiFetch(path: string, options: RequestInit = {}, apiBase = ''): 
     headers: { 'Content-Type': 'application/json', ...options.headers },
     ...options,
   })
-  if (!res.ok) throw new Error(`API error ${res.status}`)
+  if (!res.ok) {
+    let detail = ''
+    try { detail = (await res.json()).detail || '' } catch {}
+    const err: any = new Error(detail || `API error ${res.status}`)
+    err.status = res.status
+    throw err
+  }
   return res.json()
 }
 

@@ -2,7 +2,7 @@ import { useChatStore } from '../store/chatStore'
 import MessageList from './MessageList'
 import InputArea from './InputArea'
 import LeadCaptureForm from './LeadCaptureForm'
-import { sendMessage } from '../api/widgetApi'
+import { sendMessage, createSession } from '../api/widgetApi'
 
 interface Props {
   onClose: () => void
@@ -12,12 +12,60 @@ interface Props {
 
 export default function ChatPanel({ onClose, apiBase, isMobile }: Props) {
   const {
-    config, sessionToken, messages,
+    config, sessionToken, publicKey, messages,
     addMessage, updateLastAssistantMessage,
-    setStreaming, streaming, showLeadForm, setShowLeadForm,
+    setSessionToken, setStreaming, streaming, showLeadForm, setShowLeadForm,
   } = useChatStore()
 
   const dark = config?.theme === 'dark'
+
+  const refreshSession = async (): Promise<string | null> => {
+    if (!publicKey) return null
+    try {
+      const storageKey = `chatbot_${publicKey}_session`
+      sessionStorage.removeItem(storageKey)
+      const res = await createSession(publicKey, window.location.origin, apiBase)
+      setSessionToken(res.session_token)
+      sessionStorage.setItem(storageKey, res.session_token)
+      return res.session_token
+    } catch {
+      return null
+    }
+  }
+
+  const streamChat = async (token: string, text: string, history: Array<{ role: string; content: string }>) => {
+    const cleanForDisplay = (t: string) =>
+      t.split('[REQUEST_CONTACT]')[0].replace(/\n?📄[^\n]*/g, '').trimEnd()
+
+    const reader = await sendMessage(token, text, history, apiBase)
+    const decoder = new TextDecoder()
+    let buffer = ''
+    let fullContent = ''
+
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buffer += decoder.decode(value, { stream: true })
+      const lines = buffer.split('\n\n')
+      buffer = lines.pop() || ''
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue
+        try {
+          const evt = JSON.parse(line.slice(6))
+          if (evt.type === 'token') {
+            fullContent += evt.data
+            updateLastAssistantMessage(cleanForDisplay(fullContent))
+          } else if (evt.type === 'correct') {
+            fullContent = evt.data
+            updateLastAssistantMessage(fullContent)
+          } else if (evt.type === 'metadata') {
+            updateLastAssistantMessage(cleanForDisplay(fullContent))
+            if (evt.data.unresolved || evt.data.show_lead_form) setShowLeadForm(true)
+          }
+        } catch {}
+      }
+    }
+  }
 
   const handleSend = async (text: string) => {
     if (!sessionToken || streaming) return
@@ -25,43 +73,25 @@ export default function ChatPanel({ onClose, apiBase, isMobile }: Props) {
     const userMsg = { id: crypto.randomUUID(), role: 'user' as const, content: text, timestamp: now() }
     addMessage(userMsg)
     setStreaming(true)
-
-    const assistantMsg = { id: crypto.randomUUID(), role: 'assistant' as const, content: '', timestamp: now() }
-    addMessage(assistantMsg)
+    addMessage({ id: crypto.randomUUID(), role: 'assistant' as const, content: '', timestamp: now() })
 
     const history = messages.slice(-20).map((m) => ({ role: m.role, content: m.content }))
 
     try {
-      const reader = await sendMessage(sessionToken, text, history, apiBase)
-      const decoder = new TextDecoder()
-      let buffer = ''
-      let fullContent = ''
-
-      const cleanForDisplay = (t: string) =>
-        t.split('[REQUEST_CONTACT]')[0].replace(/\n?📄[^\n]*/g, '').trimEnd()
-
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-        buffer += decoder.decode(value, { stream: true })
-        const lines = buffer.split('\n\n')
-        buffer = lines.pop() || ''
-        for (const line of lines) {
-          if (!line.startsWith('data: ')) continue
+      await streamChat(sessionToken, text, history)
+    } catch (err) {
+      // Session expired or invalidated — refresh token and retry once
+      if (err instanceof Error && err.message.includes('401')) {
+        const newToken = await refreshSession()
+        if (newToken) {
           try {
-            const evt = JSON.parse(line.slice(6))
-            if (evt.type === 'token') {
-              fullContent += evt.data
-              updateLastAssistantMessage(cleanForDisplay(fullContent))
-            } else if (evt.type === 'correct') {
-              fullContent = evt.data
-              updateLastAssistantMessage(fullContent)
-            } else if (evt.type === 'metadata') {
-              updateLastAssistantMessage(cleanForDisplay(fullContent), evt.data.citations)
-              if (evt.data.unresolved || evt.data.show_lead_form) setShowLeadForm(true)
-            }
+            await streamChat(newToken, text, history)
+            return
           } catch {}
         }
+        updateLastAssistantMessage('Session expired. Please refresh the page and try again.')
+      } else {
+        updateLastAssistantMessage('Something went wrong. Please try again.')
       }
     } finally {
       setStreaming(false)
@@ -72,7 +102,7 @@ export default function ChatPanel({ onClose, apiBase, isMobile }: Props) {
 
   const panelStyle: React.CSSProperties = isMobile
     ? { position: 'fixed', inset: 0, borderRadius: 0, width: '100%', height: '100%' }
-    : { width: 420, height: 'min(1120px, calc(100vh - 110px))', borderRadius: 16 }
+    : { width: '100%', height: 'min(620px, calc(100vh - 110px))', borderRadius: 16 }
 
   return (
     <div style={{
@@ -132,9 +162,9 @@ export default function ChatPanel({ onClose, apiBase, isMobile }: Props) {
         >✕</button>
       </div>
 
-      <MessageList dark={dark} />
+      <MessageList dark={dark} onSend={handleSend} />
       {showLeadForm && <LeadCaptureForm apiBase={apiBase} dark={dark} />}
-      <InputArea onSend={handleSend} disabled={streaming} brandColor={config.brand_color} dark={dark} />
+      <InputArea onSend={handleSend} disabled={streaming} brandColor={config.brand_color} dark={dark} botName={config.name} />
 
       {config.show_branding && (
         <div style={{

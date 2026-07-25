@@ -365,6 +365,48 @@ section { padding: 5rem 1.5rem; }
   display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 8px;
 }
 
+/* ===== Live Demo Section ===== */
+@keyframes msg-in {
+  from { opacity: 0; transform: translateY(10px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.demo-msg-in { animation: msg-in .3s cubic-bezier(.22,1,.36,1) both; }
+
+@keyframes dot-jump {
+  0%, 80%, 100% { transform: translateY(0); opacity: .35; }
+  40%           { transform: translateY(-5px); opacity: 1; }
+}
+.demo-dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: #94a3b8;
+  animation: dot-jump 1.1s ease-in-out infinite;
+}
+
+@media (max-width: 767px) {
+  #live-demo { padding: 3rem 0 !important; }
+  #live-demo .col-lg-5 { text-align: center; }
+  #live-demo ul { text-align: left; }
+  #wa-demo { padding: 3rem 0 !important; }
+  #use-cases { padding: 3rem 0 !important; }
+  #services { padding: 3rem 0 !important; }
+}
+
+@media (max-width: 480px) {
+  #wa-demo { padding: 2.5rem 0 !important; }
+  #use-cases { padding: 2.5rem 0 !important; }
+}
+
+/* ===== Back to Top ===== */
+@media (max-width: 767px) {
+  /* Back-to-top sits above the WhatsApp bubble (50px height + 20px bottom + 8px gap = 78px) */
+  button[aria-label="Back to top"] {
+    width: 38px !important;
+    height: 38px !important;
+    bottom: 82px !important;
+    right: 16px !important;
+  }
+}
+
 /* ===== WhatsApp Floating Button ===== */
 .ds-whatsapp {
   position: fixed; bottom: 28px; left: 28px; z-index: 990;
@@ -425,6 +467,8 @@ section { padding: 5rem 1.5rem; }
 /* ===== Responsive — Mobile (max 767px) ===== */
 @media (max-width: 767px) {
   section { padding: 3.5rem 1rem; }
+
+  /* Hero */
   .ds-hero { padding: 90px 1rem 50px; min-height: auto; }
   .ds-hero h1 { font-size: clamp(1.9rem, 8vw, 2.8rem); }
   .ds-hero p { font-size: .95rem; }
@@ -434,29 +478,56 @@ section { padding: 5rem 1.5rem; }
   .btn-brand-lg { padding: 13px 24px; font-size: 15px; }
   .ds-widget-mockup { margin-top: 2.5rem; max-width: 100%; }
   .ds-chat-panel { display: none; }
+
+  /* Logos */
   .ds-logos { padding: 2rem 1rem; }
   .ds-logos-row { gap: 1.25rem; }
   .ds-logo-item { font-size: 13px; }
+
+  /* Steps / Features */
   .ds-step { flex-direction: column; gap: 1rem; padding: 1.25rem; }
   .ds-step-num { width: 36px; height: 36px; border-radius: 10px; font-size: 15px; }
   .ds-feature-card { padding: 1.25rem; }
+
+  /* Code block */
   .ds-code-section { padding: 3.5rem 1rem; }
   .ds-code-pre { font-size: 12px; padding: 1rem; }
+
+  /* Services section — override inline padding */
+  #services { padding: 3rem 0 !important; }
+  #services .container { padding-left: 1rem; padding-right: 1rem; }
+
+  /* FAQ */
   .ds-faq-question { font-size: 14px; padding: .9rem 1rem; }
   .ds-faq-answer { padding: 0 1rem .9rem; font-size: 14px; }
+
+  /* CTA / Footer */
   .ds-cta-banner { padding: 3.5rem 1rem; }
   .ds-footer { padding: 3rem 1rem 1.5rem; }
   .ds-footer-bottom { justify-content: center; text-align: center; }
+
+  /* Floating buttons */
   .ds-whatsapp { width: 50px; height: 50px; bottom: 20px; left: 20px; }
   .ds-whatsapp-tooltip { display: none; }
 }
 
 /* ===== Responsive — Small mobile (max 480px) ===== */
 @media (max-width: 480px) {
+  /* Hero */
   .ds-hero h1 { font-size: clamp(1.7rem, 9vw, 2.2rem); }
   .ds-hero-badge { font-size: 12px; }
+
+  /* Pricing */
   .ds-pricing-card { padding: 1.5rem 1.25rem; }
   .ds-plan-price { font-size: 2.2rem; }
+
+  /* Mockup */
   .ds-mockup-body { min-height: 160px; padding: 1rem; }
   .ds-mockup-page-title { font-size: 14px; }
+
+  /* Services section */
+  #services { padding: 2.5rem 0 !important; }
+  #services .container { padding-left: .75rem; padding-right: .75rem; }
+  #services h2 { font-size: clamp(1.4rem, 6vw, 1.9rem) !important; }
+  #services .row { --bs-gutter-x: .75rem; }
 }

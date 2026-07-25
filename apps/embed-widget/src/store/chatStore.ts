@@ -4,7 +4,6 @@ interface Message {
   id: string
   role: 'user' | 'assistant'
   content: string
-  citations?: any[]
   timestamp: string
 }
 
@@ -23,35 +22,43 @@ interface ChatState {
   sessionToken: string | null
   sessionId: string | null
   config: WidgetConfig | null
+  publicKey: string | null
   streaming: boolean
   showLeadForm: boolean
+  sessionError: string | null
   addMessage: (msg: Message) => void
-  updateLastAssistantMessage: (content: string, citations?: any[]) => void
+  updateLastAssistantMessage: (content: string) => void
   setSessionToken: (token: string) => void
   setConfig: (config: WidgetConfig) => void
+  setPublicKey: (key: string) => void
   setStreaming: (v: boolean) => void
   setShowLeadForm: (v: boolean) => void
+  setSessionError: (msg: string | null) => void
 }
 
-export const useChatStore = create<ChatState>((set, get) => ({
+export const useChatStore = create<ChatState>((set) => ({
   messages: [],
   sessionToken: null,
   sessionId: null,
   config: null,
+  publicKey: null,
   streaming: false,
   showLeadForm: false,
+  sessionError: null,
   addMessage: (msg) => set((s) => ({ messages: [...s.messages, msg] })),
-  updateLastAssistantMessage: (content, citations) =>
+  updateLastAssistantMessage: (content) =>
     set((s) => {
       const msgs = [...s.messages]
       const last = msgs.map((m: Message) => m.role).lastIndexOf('assistant')
       if (last >= 0) {
-        msgs[last] = { ...msgs[last], content, citations: citations ?? msgs[last].citations }
+        msgs[last] = { ...msgs[last], content }
       }
       return { messages: msgs }
     }),
   setSessionToken: (token) => set({ sessionToken: token }),
   setConfig: (config) => set({ config }),
+  setPublicKey: (key) => set({ publicKey: key }),
   setStreaming: (v) => set({ streaming: v }),
   setShowLeadForm: (v) => set({ showLeadForm: v }),
+  setSessionError: (msg) => set({ sessionError: msg }),
 }))

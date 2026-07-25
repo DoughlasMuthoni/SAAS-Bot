@@ -1,3 +1,6 @@
+import secrets
+from datetime import datetime, timedelta
+
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -5,9 +8,19 @@ from app.api.deps import get_current_active_user
 from app.core.config import get_settings
 from app.core.database import get_db
 from app.core.exceptions import AuthenticationError
+from app.core.security import hash_password
 from app.models import User
-from app.schemas.auth import LoginRequest, RegisterRequest, TokenResponse, UserMeResponse
+from app.repositories.user_repository import UserRepository
+from app.schemas.auth import (
+    ForgotPasswordRequest,
+    LoginRequest,
+    RegisterRequest,
+    ResetPasswordRequest,
+    TokenResponse,
+    UserMeResponse,
+)
 from app.services.auth_service import AuthService
+from app.services.email_service import send_password_reset_email
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -91,6 +104,32 @@ async def refresh(
 
     settings = get_settings()
     return TokenResponse(access_token=access_token, expires_in=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60)
+
+
+@router.post("/forgot-password")
+async def forgot_password(body: ForgotPasswordRequest, db: AsyncSession = Depends(get_db)):
+    # Always return 200 — never reveal whether the email exists
+    user = await UserRepository.get_by_email(db, body.email)
+    if user and user.is_active:
+        token = secrets.token_urlsafe(32)
+        expires_at = datetime.utcnow() + timedelta(hours=1)
+        await UserRepository.set_reset_token(db, user.id, token, expires_at)
+        settings = get_settings()
+        reset_link = f"{settings.ADMIN_WEB_URL}/reset-password?token={token}"
+        await send_password_reset_email(user.email, reset_link)
+    return {"detail": "If that email exists, a reset link has been sent."}
+
+
+@router.post("/reset-password")
+async def reset_password(body: ResetPasswordRequest, db: AsyncSession = Depends(get_db)):
+    user = await UserRepository.get_by_reset_token(db, body.token)
+    if user is None:
+        raise HTTPException(status_code=400, detail="Invalid or expired reset link.")
+    if user.reset_token_expires_at is None or datetime.utcnow() > user.reset_token_expires_at:
+        raise HTTPException(status_code=400, detail="This reset link has expired. Please request a new one.")
+    await UserRepository.update_password(db, user.id, hash_password(body.new_password))
+    await UserRepository.clear_reset_token(db, user.id)
+    return {"detail": "Password updated. You can now sign in with your new password."}
 
 
 @router.get("/me", response_model=UserMeResponse)

@@ -1,16 +1,9 @@
 import React from 'react'
 
-interface Citation {
-  title?: string
-  url?: string
-  snippet?: string
-}
-
 interface Message {
   id: string
   role: 'user' | 'assistant'
   content: string
-  citations?: Citation[]
   timestamp?: string
 }
 

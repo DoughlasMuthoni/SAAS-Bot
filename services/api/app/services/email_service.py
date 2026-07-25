@@ -1,0 +1,144 @@
+import smtplib
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+
+from app.core.config import get_settings
+from app.core.logging import get_logger
+
+logger = get_logger(__name__)
+
+
+async def send_password_reset_email(to_email: str, reset_link: str) -> None:
+    settings = get_settings()
+
+    if not settings.SMTP_HOST:
+        logger.info("SMTP not configured — password reset link", email=to_email, link=reset_link)
+        return
+
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = "Reset your DG ChatBot password"
+    msg["From"] = settings.SMTP_FROM_EMAIL
+    msg["To"] = to_email
+
+    text = (
+        f"Reset your DG ChatBot password\n\n"
+        f"Click the link below (expires in 1 hour):\n{reset_link}\n\n"
+        f"If you didn't request this, ignore this email."
+    )
+    html = f"""
+<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;max-width:480px;margin:0 auto;padding:32px;color:#0f172a">
+  <h2 style="font-size:1.3rem;font-weight:800;margin:0 0 8px">Reset your password</h2>
+  <p style="color:#64748b;font-size:14px;margin:0 0 24px;line-height:1.6">
+    We received a request to reset the password for your DG ChatBot admin account.
+    Click the button below — this link expires in <strong>1 hour</strong>.
+  </p>
+  <a href="{reset_link}"
+     style="display:inline-block;background:#16a34a;color:#fff;padding:12px 28px;border-radius:9px;text-decoration:none;font-weight:700;font-size:14px">
+    Reset password →
+  </a>
+  <p style="color:#94a3b8;font-size:12px;margin:28px 0 0;line-height:1.6">
+    If you didn't request a password reset, you can safely ignore this email.
+    Your password will not change.
+  </p>
+  <hr style="border:none;border-top:1px solid #e2e8f0;margin:24px 0">
+  <p style="color:#94a3b8;font-size:11px;margin:0">
+    DG ChatBot · Douglas Githui Tech Creatives · Kenya
+  </p>
+</div>
+"""
+
+    msg.attach(MIMEText(text, "plain"))
+    msg.attach(MIMEText(html, "html"))
+
+    try:
+        with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT) as smtp:
+            if settings.SMTP_TLS:
+                smtp.starttls()
+            if settings.SMTP_USER:
+                smtp.login(settings.SMTP_USER, settings.SMTP_PASSWORD)
+            smtp.send_message(msg)
+        logger.info("Password reset email sent", email=to_email)
+    except Exception as exc:
+        logger.error("Failed to send reset email", email=to_email, error=str(exc))
+
+
+async def send_lead_notification_email(
+    to_emails: list[str],
+    lead_name: str,
+    lead_email: str | None,
+    lead_phone: str | None,
+    lead_message: str | None,
+    bot_name: str,
+    page_url: str | None,
+) -> None:
+    settings = get_settings()
+
+    if not to_emails:
+        return
+
+    if not settings.SMTP_HOST:
+        logger.info(
+            "SMTP not configured — new lead captured",
+            bot=bot_name,
+            name=lead_name,
+            email=lead_email,
+            phone=lead_phone,
+        )
+        return
+
+    rows = ""
+    if lead_email:
+        rows += f'<tr><td style="color:#64748b;font-size:13px;padding:6px 0;width:100px">Email</td><td style="font-size:13px;font-weight:600;padding:6px 0">{lead_email}</td></tr>'
+    if lead_phone:
+        rows += f'<tr><td style="color:#64748b;font-size:13px;padding:6px 0">Phone</td><td style="font-size:13px;font-weight:600;padding:6px 0">{lead_phone}</td></tr>'
+    if lead_message:
+        rows += f'<tr><td style="color:#64748b;font-size:13px;padding:6px 0;vertical-align:top">Message</td><td style="font-size:13px;padding:6px 0">{lead_message}</td></tr>'
+    if page_url:
+        rows += f'<tr><td style="color:#64748b;font-size:13px;padding:6px 0">Page</td><td style="font-size:13px;padding:6px 0"><a href="{page_url}" style="color:#16a34a">{page_url}</a></td></tr>'
+
+    html = f"""
+<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;max-width:480px;margin:0 auto;padding:32px;color:#0f172a">
+  <div style="display:inline-block;background:#16a34a;color:#fff;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;letter-spacing:.04em;margin-bottom:16px">
+    NEW LEAD
+  </div>
+  <h2 style="font-size:1.25rem;font-weight:800;margin:0 0 6px">{lead_name} left their contact details</h2>
+  <p style="color:#64748b;font-size:13px;margin:0 0 20px">via <strong>{bot_name}</strong></p>
+  <table style="width:100%;border-collapse:collapse;border-top:1px solid #e2e8f0">
+    {rows}
+  </table>
+  <a href="{settings.ADMIN_WEB_URL}/leads"
+     style="display:inline-block;margin-top:24px;background:#16a34a;color:#fff;padding:11px 24px;border-radius:9px;text-decoration:none;font-weight:700;font-size:13px">
+    View in admin panel →
+  </a>
+  <hr style="border:none;border-top:1px solid #e2e8f0;margin:28px 0 16px">
+  <p style="color:#94a3b8;font-size:11px;margin:0">DG ChatBot · Douglas Githui Tech Creatives · Kenya</p>
+</div>
+"""
+
+    plain = (
+        f"New lead from {bot_name}\n\n"
+        f"Name: {lead_name}\n"
+        + (f"Email: {lead_email}\n" if lead_email else "")
+        + (f"Phone: {lead_phone}\n" if lead_phone else "")
+        + (f"Message: {lead_message}\n" if lead_message else "")
+        + (f"Page: {page_url}\n" if page_url else "")
+        + f"\nView leads: {settings.ADMIN_WEB_URL}/leads"
+    )
+
+    for recipient in to_emails:
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = f"New lead: {lead_name} via {bot_name}"
+        msg["From"] = settings.SMTP_FROM_EMAIL
+        msg["To"] = recipient
+        msg.attach(MIMEText(plain, "plain"))
+        msg.attach(MIMEText(html, "html"))
+        try:
+            with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT) as smtp:
+                if settings.SMTP_TLS:
+                    smtp.starttls()
+                if settings.SMTP_USER:
+                    smtp.login(settings.SMTP_USER, settings.SMTP_PASSWORD)
+                smtp.send_message(msg)
+            logger.info("Lead notification sent", email=recipient, bot=bot_name)
+        except Exception as exc:
+            logger.error("Failed to send lead notification", email=recipient, error=str(exc))

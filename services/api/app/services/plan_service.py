@@ -98,6 +98,19 @@ class PlanService:
                 detail=f"Monthly conversation limit reached ({limits.max_conversations_per_month} on your plan). Upgrade for more.",
             )
 
+    # ── Plan expiry (trial anti-abuse gate) ──────────────────────
+    @staticmethod
+    async def check_plan_expiry(db: AsyncSession, org_id: str) -> None:
+        result = await db.execute(
+            select(Organization.plan_expires_at).where(Organization.id == org_id)
+        )
+        expires_at = result.scalar_one_or_none()
+        if expires_at is not None and expires_at < datetime.now(timezone.utc).replace(tzinfo=None):
+            raise HTTPException(
+                status_code=402,
+                detail="Your free trial has expired. Please upgrade your plan to continue using the chatbot.",
+            )
+
     # ── Crawl permission ─────────────────────────────────────────
     @staticmethod
     async def check_crawl_permission(db: AsyncSession, org_id: str) -> None:
@@ -166,8 +179,14 @@ class PlanService:
             .where(User.org_id == org_id, User.deleted_at.is_(None))
         )).scalar() or 0
 
+        expires_result = await db.execute(
+            select(Organization.plan_expires_at).where(Organization.id == org_id)
+        )
+        plan_expires_at = expires_result.scalar_one_or_none()
+
         return {
             "plan": plan,
+            "plan_expires_at": plan_expires_at.isoformat() if plan_expires_at else None,
             "bots":          {"used": bot_count,    "limit": limits.max_bots},
             "sources":       {"used": source_count,  "limit": limits.max_sources},
             "conversations": {"used": conv_count,    "limit": limits.max_conversations_per_month},

@@ -11,10 +11,13 @@ function mount() {
 
   const host = document.createElement('div')
   host.id = 'chatbot-widget-host'
+  // Fixed + zero-size so the host is out of document flow and above other fixed elements
+  host.style.cssText = 'position:fixed;inset:0;pointer-events:none;z-index:999990;'
   document.body.appendChild(host)
 
   const shadow = host.attachShadow({ mode: 'open' })
   const mountPoint = document.createElement('div')
+  mountPoint.style.cssText = 'pointer-events:auto;'
   shadow.appendChild(mountPoint)
 
   const root = ReactDOM.createRoot(mountPoint)

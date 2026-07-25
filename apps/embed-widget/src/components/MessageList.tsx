@@ -4,14 +4,16 @@ import MessageBubble from './MessageBubble'
 
 interface Props {
   dark?: boolean
+  onSend?: (text: string) => void
 }
 
-export default function MessageList({ dark = false }: Props) {
-  const { messages, config, streaming } = useChatStore()
-  const bottomRef = useRef<HTMLDivElement>(null)
+export default function MessageList({ dark = false, onSend }: Props) {
+  const { messages, config, streaming, sessionError } = useChatStore()
+  const containerRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+    const el = containerRef.current
+    if (el) el.scrollTop = el.scrollHeight
   }, [messages, streaming])
 
   const lastMsg = messages[messages.length - 1]
@@ -26,7 +28,7 @@ export default function MessageList({ dark = false }: Props) {
   const textMuted = dark ? '#71717a' : '#94a3b8'
 
   return (
-    <div style={{
+    <div ref={containerRef} style={{
       flex: 1,
       overflowY: 'auto',
       padding: '16px 14px 8px',
@@ -48,8 +50,32 @@ export default function MessageList({ dark = false }: Props) {
         }
       `}</style>
 
+      {/* Trial expired / service unavailable notice */}
+      {sessionError && (
+        <div style={{
+          display: 'flex', flexDirection: 'column',
+          alignItems: 'center', justifyContent: 'center',
+          flex: 1, gap: 14, textAlign: 'center', padding: '0 24px',
+        }}>
+          <div style={{
+            width: 56, height: 56, borderRadius: '50%',
+            background: '#fef2f2',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: 26,
+          }}>🔒</div>
+          <div>
+            <p style={{ margin: '0 0 6px', fontSize: 14, fontWeight: 600, color: dark ? '#f87171' : '#dc2626', lineHeight: 1.45 }}>
+              Service Unavailable
+            </p>
+            <p style={{ margin: 0, fontSize: 12.5, color: textMuted, lineHeight: 1.6 }}>
+              {sessionError}
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Empty / welcome state */}
-      {messages.length === 0 && config && (
+      {!sessionError && messages.length === 0 && config && (
         <div style={{
           display: 'flex', flexDirection: 'column',
           alignItems: 'center', justifyContent: 'center',
@@ -67,20 +93,41 @@ export default function MessageList({ dark = false }: Props) {
               {config.welcome_message}
             </p>
             <p style={{ margin: 0, fontSize: 12.5, color: textMuted, lineHeight: 1.5 }}>
-              Ask me anything — I'll answer from our knowledge base.
+              Ask <strong style={{ color: dark ? '#d4d4d8' : '#475569' }}>{config.name}</strong> anything — I'll answer from our knowledge base.
             </p>
           </div>
 
-          {/* Suggested prompt chips */}
+          {/* Suggested prompt chips — clicking sends the question */}
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7, justifyContent: 'center', marginTop: 4 }}>
             {['How does this work?', 'What can you help with?', 'Contact support'].map(q => (
-              <div key={q} style={{
-                background: msgBg,
-                border: `1px solid ${dark ? '#3f3f46' : '#e2e8f0'}`,
-                borderRadius: 20, padding: '5px 12px',
-                fontSize: 12, color: dark ? '#a1a1aa' : '#64748b',
-                cursor: 'default',
-              }}>{q}</div>
+              <button
+                key={q}
+                onClick={() => onSend?.(q)}
+                style={{
+                  background: msgBg,
+                  border: `1px solid ${dark ? '#3f3f46' : '#e2e8f0'}`,
+                  borderRadius: 20, padding: '6px 13px',
+                  fontSize: 12, color: dark ? '#a1a1aa' : '#64748b',
+                  cursor: onSend ? 'pointer' : 'default',
+                  fontFamily: 'inherit',
+                  transition: 'background .15s, border-color .15s, color .15s, transform .1s',
+                }}
+                onMouseEnter={e => {
+                  if (!onSend) return
+                  const el = e.currentTarget
+                  el.style.background = dark ? '#3f3f46' : '#fff'
+                  el.style.borderColor = brandColor
+                  el.style.color = brandColor
+                  el.style.transform = 'translateY(-1px)'
+                }}
+                onMouseLeave={e => {
+                  const el = e.currentTarget
+                  el.style.background = msgBg
+                  el.style.borderColor = dark ? '#3f3f46' : '#e2e8f0'
+                  el.style.color = dark ? '#a1a1aa' : '#64748b'
+                  el.style.transform = 'translateY(0)'
+                }}
+              >{q}</button>
             ))}
           </div>
         </div>
@@ -132,7 +179,6 @@ export default function MessageList({ dark = false }: Props) {
         </div>
       )}
 
-      <div ref={bottomRef} />
     </div>
   )
 }

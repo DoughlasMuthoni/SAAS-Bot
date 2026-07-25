@@ -67,7 +67,7 @@ def create_app() -> FastAPI:
         return JSONResponse(status_code=500, content={"detail": "Internal server error"})
 
     # API routers
-    from app.api.v1 import auth, bots, sources, widget, conversations, analytics, leads, workspaces, admin, plans, public, team
+    from app.api.v1 import auth, bots, sources, widget, conversations, analytics, leads, workspaces, admin, plans, public, team, reviews, notifications
     app.include_router(auth.router, prefix="/api/v1")
     app.include_router(workspaces.router, prefix="/api/v1")
     app.include_router(bots.router, prefix="/api/v1")
@@ -80,6 +80,8 @@ def create_app() -> FastAPI:
     app.include_router(plans.router, prefix="/api/v1")
     app.include_router(public.router, prefix="/api/v1")
     app.include_router(team.router, prefix="/api/v1")
+    app.include_router(reviews.router, prefix="/api/v1")
+    app.include_router(notifications.router, prefix="/api/v1")
 
     # Serve widget bundle — widget.js gets no-cache so browsers always fetch the latest
     static_dir = Path(__file__).parent / "static"

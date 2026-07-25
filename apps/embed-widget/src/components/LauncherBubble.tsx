@@ -5,7 +5,10 @@ interface Props {
   isOpen: boolean
   color: string
   position?: string
+  botName?: string
 }
+
+const DISMISS_KEY = 'chatbot_label_dismissed'
 
 function buildKeyframes(color: string) {
   const hex = color.replace('#', '')
@@ -18,48 +21,118 @@ function buildKeyframes(color: string) {
   70%  { box-shadow: 0 0 0 10px rgba(${r},${g},${b},0); }
   100% { box-shadow: 0 0 0 0 rgba(${r},${g},${b},0); }
 }
-@keyframes chatbot-fadein {
-  from { opacity: 0; transform: translateX(8px); }
-  to   { opacity: 1; transform: translateX(0); }
+@keyframes cb-label-in {
+  from { opacity: 0; transform: translateY(10px) scale(.94); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
 }
 `
 }
 
-export default function LauncherBubble({ onClick, isOpen, color, position = 'bottom-right' }: Props) {
+export default function LauncherBubble({
+  onClick,
+  isOpen,
+  color,
+  position = 'bottom-right',
+  botName = 'Support',
+}: Props) {
   const [hovered, setHovered] = useState(false)
+  const [dismissed, setDismissed] = useState(() => {
+    try { return sessionStorage.getItem(DISMISS_KEY) === '1' } catch { return false }
+  })
   const isLeft = position === 'bottom-left'
+
+  const dismiss = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    setDismissed(true)
+    try { sessionStorage.setItem(DISMISS_KEY, '1') } catch {}
+  }
+
+  const showLabel = !isOpen && !dismissed
 
   return (
     <>
       <style>{buildKeyframes(color)}</style>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexDirection: isLeft ? 'row-reverse' : 'row' }}>
+      <div style={{
+        display: 'flex',
+        alignItems: 'flex-end',
+        gap: 10,
+        flexDirection: isLeft ? 'row-reverse' : 'row',
+        fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+      }}>
 
-        {/* "Ask me anything" label — hidden when chat is open */}
-        {!isOpen && (
-          <div style={{
-            animation: 'chatbot-fadein 0.35s ease both',
-            background: '#fff',
-            color: '#1f2937',
-            fontSize: 13,
-            fontWeight: 500,
-            fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-            padding: '7px 14px',
-            borderRadius: 20,
-            boxShadow: '0 4px 16px rgba(0,0,0,0.12), 0 1px 4px rgba(0,0,0,0.08)',
-            whiteSpace: 'nowrap',
-            cursor: 'pointer',
-            userSelect: 'none',
-            border: '1px solid rgba(0,0,0,0.06)',
-            transition: 'box-shadow 0.2s, transform 0.2s',
-            transform: hovered ? 'translateY(-1px)' : 'translateY(0)',
-          }}
+        {/* Floating label card — dismissible, auto-hides after first open */}
+        {showLabel && (
+          <div
             onClick={onClick}
+            style={{
+              animation: 'cb-label-in 0.32s cubic-bezier(0.34,1.56,0.64,1) both',
+              background: '#fff',
+              borderRadius: 14,
+              boxShadow: '0 6px 24px rgba(0,0,0,.14), 0 1px 4px rgba(0,0,0,.08)',
+              border: '1px solid rgba(0,0,0,.07)',
+              padding: '10px 12px',
+              cursor: 'pointer',
+              userSelect: 'none',
+              maxWidth: 210,
+              position: 'relative',
+            }}
           >
-            💬 Ask me anything
+            {/* Dismiss × */}
+            <button
+              onClick={dismiss}
+              aria-label="Dismiss"
+              style={{
+                position: 'absolute', top: 6, right: 7,
+                background: 'none', border: 'none',
+                cursor: 'pointer', padding: '2px 4px',
+                fontSize: 11, lineHeight: 1,
+                color: '#94a3b8',
+                borderRadius: 4,
+                transition: 'color .15s',
+              }}
+              onMouseEnter={e => (e.currentTarget.style.color = '#475569')}
+              onMouseLeave={e => (e.currentTarget.style.color = '#94a3b8')}
+            >✕</button>
+
+            {/* Avatar + name */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingRight: 16 }}>
+              <div style={{
+                width: 30, height: 30, borderRadius: '50%', flexShrink: 0,
+                background: `linear-gradient(135deg, ${lighten(color, 20)}, ${color})`,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: 15, boxShadow: `0 2px 8px ${color}44`,
+              }}>🤖</div>
+              <div>
+                <div style={{ fontSize: 12.5, fontWeight: 700, color: '#0f172a', lineHeight: 1.2 }}>
+                  {botName}
+                </div>
+                <div style={{
+                  fontSize: 10.5, color: '#64748b',
+                  display: 'flex', alignItems: 'center', gap: 3, marginTop: 1,
+                }}>
+                  <span style={{
+                    width: 5, height: 5, borderRadius: '50%',
+                    background: '#4ade80', display: 'inline-block',
+                  }} />
+                  Online now
+                </div>
+              </div>
+            </div>
+
+            {/* Prompt line */}
+            <div style={{
+              marginTop: 8,
+              fontSize: 12.5,
+              color: '#374151',
+              lineHeight: 1.45,
+              paddingLeft: 38,
+            }}>
+              How can I help you today? 👋
+            </div>
           </div>
         )}
 
-        {/* Launcher bubble */}
+        {/* Main launcher bubble */}
         <button
           onClick={onClick}
           onMouseEnter={() => setHovered(true)}

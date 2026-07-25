@@ -5,6 +5,7 @@ interface Props {
   disabled: boolean
   brandColor: string
   dark?: boolean
+  botName?: string
 }
 
 const MAX_CHARS = 2000
@@ -18,7 +19,7 @@ const EMOJIS = [
   '🌟','💥','🎯','🏆','🌈','🍀','💎','🤖',
 ]
 
-export default function InputArea({ onSend, disabled, brandColor, dark = false }: Props) {
+export default function InputArea({ onSend, disabled, brandColor, dark = false, botName = 'us' }: Props) {
   const [text, setText] = useState('')
   const [focused, setFocused] = useState(false)
   const [showEmoji, setShowEmoji] = useState(false)
@@ -104,7 +105,7 @@ export default function InputArea({ onSend, disabled, brandColor, dark = false }
           onFocus={() => setFocused(true)}
           onBlur={() => setFocused(false)}
           disabled={disabled}
-          placeholder={disabled ? 'Thinking…' : 'Ask a question…'}
+          placeholder={disabled ? `${botName} is thinking…` : `Ask ${botName} anything…`}
           rows={1}
           style={{
             flex: 1, resize: 'none', border: 'none', outline: 'none',

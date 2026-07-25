@@ -1,9 +1,138 @@
+import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { useNavigate, Link } from 'react-router-dom'
 import api from '../lib/api'
 import { useAuthStore } from '../lib/auth'
 import { useWorkspaceId } from '../hooks/useWorkspaceId'
 import UsageMeter from '../components/UsageMeter'
+
+// ── Onboarding Checklist ─────────────────────────────────────────────────────
+const CL_KEY = 'dg_onboard_v1'
+
+function OnboardingChecklist({ hasBots, hasConversations }: { hasBots: boolean; hasConversations: boolean }) {
+  const [dismissed, setDismissed] = useState(() => localStorage.getItem(CL_KEY + '_dismissed') === '1')
+  const [manual, setManual] = useState<Record<string, boolean>>(() => {
+    try { return JSON.parse(localStorage.getItem(CL_KEY) || '{}') } catch { return {} }
+  })
+
+  const toggleManual = (key: string) => {
+    const next = { ...manual, [key]: !manual[key] }
+    setManual(next)
+    localStorage.setItem(CL_KEY, JSON.stringify(next))
+  }
+
+  const dismiss = () => {
+    setDismissed(true)
+    localStorage.setItem(CL_KEY + '_dismissed', '1')
+  }
+
+  const steps = [
+    { key: 'bot',   label: 'Create your first chatbot',        desc: 'Give it a name, color, and welcome message.', done: hasBots,                  link: '/bots',          cta: 'Create bot' },
+    { key: 'know',  label: 'Add knowledge to your bot',        desc: 'Upload PDFs, paste text, or add FAQs.',       done: !!manual.know,            link: '/sources',       cta: 'Add content' },
+    { key: 'embed', label: 'Embed the widget on your website', desc: 'Copy one script tag into your site HTML.',    done: !!manual.embed,           link: '/bots',          cta: 'Get embed code' },
+    { key: 'chat',  label: 'Receive your first visitor chat',  desc: 'Test by chatting on your live website.',      done: hasConversations,         link: '/conversations', cta: 'View chats' },
+  ]
+
+  const doneCount = steps.filter(s => s.done).length
+  const allDone = doneCount === steps.length
+
+  if (dismissed || allDone) return null
+
+  const pct = Math.round((doneCount / steps.length) * 100)
+
+  return (
+    <div style={{
+      background: '#fff', borderRadius: 14,
+      border: '1px solid #e2e8f0',
+      boxShadow: '0 2px 12px rgba(0,0,0,.06)',
+      marginBottom: '1.75rem',
+      overflow: 'hidden',
+    }}>
+      {/* Header */}
+      <div style={{
+        background: 'linear-gradient(135deg, #15803d 0%, #16a34a 100%)',
+        padding: '14px 18px',
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+      }}>
+        <div>
+          <div style={{ color: '#fff', fontWeight: 800, fontSize: '1rem' }}>🚀 Getting started</div>
+          <div style={{ color: 'rgba(255,255,255,.8)', fontSize: 12.5, marginTop: 2 }}>
+            {doneCount} of {steps.length} steps complete · {pct}%
+          </div>
+        </div>
+        <button
+          onClick={dismiss}
+          aria-label="Dismiss checklist"
+          style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,.65)', cursor: 'pointer', fontSize: 20, lineHeight: 1, padding: '0 2px' }}
+        >×</button>
+      </div>
+
+      {/* Progress bar */}
+      <div style={{ height: 4, background: '#e2e8f0' }}>
+        <div style={{ height: '100%', width: `${pct}%`, background: '#16a34a', transition: 'width .4s ease' }} />
+      </div>
+
+      {/* Steps */}
+      <div>
+        {steps.map((s, i) => (
+          <div key={s.key} style={{
+            display: 'flex', alignItems: 'center', gap: 14,
+            padding: '13px 18px',
+            borderBottom: i < steps.length - 1 ? '1px solid #f1f5f9' : 'none',
+            background: s.done ? '#fafafa' : '#fff',
+          }}>
+            {/* Checkbox */}
+            <button
+              onClick={() => { if (s.key !== 'bot' && s.key !== 'chat') toggleManual(s.key) }}
+              aria-label={s.done ? 'Completed' : 'Mark complete'}
+              style={{
+                width: 22, height: 22, borderRadius: 6, flexShrink: 0,
+                cursor: (s.key !== 'bot' && s.key !== 'chat') ? 'pointer' : 'default',
+                border: `2px solid ${s.done ? '#16a34a' : '#cbd5e1'}`,
+                background: s.done ? '#16a34a' : '#fff',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                transition: 'background .15s, border-color .15s',
+              }}
+            >
+              {s.done && (
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3.5" strokeLinecap="round">
+                  <polyline points="20 6 9 17 4 12"/>
+                </svg>
+              )}
+            </button>
+
+            {/* Label + desc */}
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{
+                fontSize: 13.5, fontWeight: 600,
+                color: s.done ? '#94a3b8' : '#1e293b',
+                textDecoration: s.done ? 'line-through' : 'none',
+              }}>{s.label}</div>
+              {!s.done && (
+                <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 2 }}>{s.desc}</div>
+              )}
+            </div>
+
+            {/* CTA */}
+            {!s.done && (
+              <Link
+                to={s.link}
+                style={{
+                  fontSize: 12, fontWeight: 700, color: '#16a34a',
+                  textDecoration: 'none', background: '#f0fdf4',
+                  border: '1px solid #bbf7d0', borderRadius: 7,
+                  padding: '5px 12px', whiteSpace: 'nowrap', flexShrink: 0,
+                }}
+              >
+                {s.cta} →
+              </Link>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
 
 const STATS = [
   {
@@ -99,7 +228,6 @@ export default function DashboardPage() {
     enabled: !!workspaceId,
   })
 
-  const isNewAccount = bots.length === 0
   const hour = new Date().getHours()
   const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening'
   const name = user?.full_name?.split(' ')[0] || user?.email?.split('@')[0] || 'there'
@@ -134,46 +262,11 @@ export default function DashboardPage() {
         </Link>
       </div>
 
-      {/* ── Onboarding banner ────────────────────────────────── */}
-      {isNewAccount && (
-        <div style={{
-          background: 'linear-gradient(135deg, #15803d 0%, #16a34a 50%, #1d4ed8 100%)',
-          borderRadius: 14, padding: '1.5rem 2rem',
-          marginBottom: '1.75rem',
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          flexWrap: 'wrap', gap: 16,
-          boxShadow: '0 4px 20px rgba(22,163,74,.3)',
-        }}>
-          <div>
-            <div style={{ color: '#fff', fontWeight: 800, fontSize: '1.1rem', marginBottom: 4 }}>
-              🚀 Welcome! Let's set up your first chatbot
-            </div>
-            <div style={{ color: 'rgba(255,255,255,.85)', fontSize: 13.5, maxWidth: 480 }}>
-              Create a bot, add your knowledge base, then paste one line of code on your website. Takes about 5 minutes.
-            </div>
-          </div>
-          <div style={{ display: 'flex', gap: 10, flexShrink: 0 }}>
-            <Link to="/bots" style={{
-              background: '#fff', color: '#16a34a',
-              padding: '9px 20px', borderRadius: 9,
-              fontWeight: 700, fontSize: 13.5, textDecoration: 'none',
-              boxShadow: '0 2px 8px rgba(0,0,0,.15)',
-              display: 'flex', alignItems: 'center', gap: 6,
-            }}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-              Create a Bot
-            </Link>
-            <Link to="/sources" style={{
-              background: 'rgba(255,255,255,.15)', color: '#fff',
-              padding: '9px 20px', borderRadius: 9,
-              fontWeight: 600, fontSize: 13.5, textDecoration: 'none',
-              border: '1px solid rgba(255,255,255,.3)',
-            }}>
-              Add Knowledge
-            </Link>
-          </div>
-        </div>
-      )}
+      {/* ── Onboarding checklist ─────────────────────────────── */}
+      <OnboardingChecklist
+        hasBots={bots.length > 0}
+        hasConversations={(analytics?.total_conversations ?? 0) > 0}
+      />
 
       {/* ── Stat cards ───────────────────────────────────────── */}
       <div className="row g-3 mb-4">

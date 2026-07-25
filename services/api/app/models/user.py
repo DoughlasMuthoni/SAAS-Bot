@@ -21,6 +21,8 @@ class User(Base, TimestampMixin, SoftDeleteMixin):
     )
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    reset_token: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
+    reset_token_expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     organization: Mapped["Organization"] = relationship(back_populates="users")  # noqa: F821
     api_keys: Mapped[list["ApiKey"]] = relationship(back_populates="user")  # noqa: F821

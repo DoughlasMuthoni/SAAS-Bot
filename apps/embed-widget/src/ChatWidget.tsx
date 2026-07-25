@@ -15,7 +15,7 @@ const LAUNCHER_CLEARANCE = 92 // 20 bottom + 62 bubble + 10 gap
 export default function ChatWidget({ botPublicKey, apiBase = '' }: Props) {
   const [open, setOpen] = useState(false)
   const [isMobile, setIsMobile] = useState(false)
-  const { setConfig, setSessionToken, config } = useChatStore()
+  const { setConfig, setSessionToken, setPublicKey, setSessionError, config } = useChatStore()
 
   useEffect(() => {
     const mq = window.matchMedia('(max-width: 480px)')
@@ -35,6 +35,7 @@ export default function ChatWidget({ botPublicKey, apiBase = '' }: Props) {
       .then((cfg) => {
         console.log('[ChatbotWidget] Config loaded', cfg)
         setConfig(cfg)
+        setPublicKey(botPublicKey)
         const domain = window.location.origin
         const storageKey = `chatbot_${botPublicKey}_session`
         const cached = sessionStorage.getItem(storageKey)
@@ -46,7 +47,12 @@ export default function ChatWidget({ botPublicKey, apiBase = '' }: Props) {
               setSessionToken(res.session_token)
               sessionStorage.setItem(storageKey, res.session_token)
             })
-            .catch((err) => console.error('[ChatbotWidget] Session creation failed', err))
+            .catch((err: any) => {
+              console.error('[ChatbotWidget] Session creation failed', err)
+              if (err?.status === 402 || err?.status === 403) {
+                setSessionError(err.message || 'This chatbot is currently unavailable.')
+              }
+            })
         }
       })
       .catch((err) => console.error('[ChatbotWidget] Config fetch failed', err))
@@ -66,6 +72,7 @@ export default function ChatWidget({ botPublicKey, apiBase = '' }: Props) {
           bottom: LAUNCHER_CLEARANCE,
           [side]: edgeOffset,
           zIndex: 999998,
+          width: `min(420px, calc(100vw - ${edgeOffset * 2}px))`,
         }}>
           <ChatPanel onClose={() => setOpen(false)} apiBase={apiBase} isMobile={false} />
         </div>
@@ -76,20 +83,23 @@ export default function ChatWidget({ botPublicKey, apiBase = '' }: Props) {
         <ChatPanel onClose={() => setOpen(false)} apiBase={apiBase} isMobile={true} />
       )}
 
-      {/* Launcher bubble — always at bottom corner */}
-      <div style={{
-        position: 'fixed',
-        bottom: edgeOffset,
-        [side]: edgeOffset,
-        zIndex: 999999,
-      }}>
-        <LauncherBubble
-          onClick={() => setOpen(!open)}
-          isOpen={open}
-          color={config.brand_color}
-          position={config.position}
-        />
-      </div>
+      {/* Launcher bubble — hidden on mobile when chat is open (panel has its own close button) */}
+      {(!isMobile || !open) && (
+        <div style={{
+          position: 'fixed',
+          bottom: edgeOffset,
+          [side]: edgeOffset,
+          zIndex: 999999,
+        }}>
+          <LauncherBubble
+            onClick={() => setOpen(!open)}
+            isOpen={open}
+            color={config.brand_color}
+            position={config.position}
+            botName={config.name}
+          />
+        </div>
+      )}
     </>
   )
 }

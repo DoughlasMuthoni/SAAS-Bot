@@ -50,6 +50,7 @@ export default function SourcesPage() {
   const [modalTab, setModalTab] = useState<SourceTab>('text')
   const [typeFilter, setTypeFilter] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
+  const [activeBotId, setActiveBotId] = useState<string>('all')
 
   const [botIdForSource, setBotIdForSource] = useState('')
   const [textForm, setTextForm]   = useState({ name: '', content: '' })
@@ -126,6 +127,11 @@ export default function SourcesPage() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['sources'] }),
   })
 
+  const deleteSource = useMutation({
+    mutationFn: (id: string) => api.delete(`/sources/${id}?workspace_id=${workspaceId}`),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['sources'] }),
+  })
+
   function handleMutationError(e: any, fallback: string) {
     if (e?.response?.status === 402) { closeModal(); setUpgradeReason(e?.response?.data?.detail || 'You have reached the source limit on your current plan.') }
     else setFormError(e?.response?.data?.detail || fallback)
@@ -159,14 +165,16 @@ export default function SourcesPage() {
 
   const isPending = addText.isPending || addFaq.isPending || addUpload.isPending || addCrawl.isPending
 
+  const botSources = activeBotId === 'all' ? sources : sources.filter(s => s.bot_id === activeBotId)
+
   const counts = {
-    total:   sources.length,
-    indexed: sources.filter(s => s.status === 'indexed').length,
-    pending: sources.filter(s => s.status === 'pending' || s.status === 'indexing').length,
-    failed:  sources.filter(s => s.status === 'failed').length,
+    total:   botSources.length,
+    indexed: botSources.filter(s => s.status === 'indexed').length,
+    pending: botSources.filter(s => s.status === 'pending' || s.status === 'indexing').length,
+    failed:  botSources.filter(s => s.status === 'failed').length,
   }
 
-  const filtered = sources.filter(s => {
+  const filtered = botSources.filter(s => {
     if (typeFilter && s.source_type !== typeFilter) return false
     if (statusFilter && s.status !== statusFilter) return false
     return true
@@ -176,10 +184,15 @@ export default function SourcesPage() {
     text: '📝 Text', faq: '❓ FAQ', upload: '📄 File Upload', crawl: '🕷️ Web Crawler',
   }
 
+  const openModal = () => {
+    setShowModal(true)
+    setBotIdForSource(activeBotId !== 'all' ? activeBotId : bots[0]?.id ?? '')
+  }
+
   return (
     <div style={{ maxWidth: 960, margin: '0 auto' }}>
       {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 24 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
         <div>
           <h1 style={{ fontSize: '1.4rem', fontWeight: 800, color: '#0f172a', margin: 0 }}>Knowledge Sources</h1>
           <p style={{ color: '#64748b', fontSize: 13.5, marginTop: 4, marginBottom: 0 }}>
@@ -187,15 +200,65 @@ export default function SourcesPage() {
           </p>
         </div>
         {canEdit && (
-          <button
-            className="btn btn-primary btn-sm"
-            style={{ fontWeight: 600 }}
-            onClick={() => { setShowModal(true); setBotIdForSource(bots[0]?.id ?? '') }}
-          >
+          <button className="btn btn-primary btn-sm" style={{ fontWeight: 600 }} onClick={openModal}>
             + Add Source
           </button>
         )}
       </div>
+
+      {/* Bot tabs */}
+      {bots.length > 0 && (
+        <div style={{ display: 'flex', gap: 8, marginBottom: 20, flexWrap: 'wrap' }}>
+          <button
+            onClick={() => setActiveBotId('all')}
+            style={{
+              padding: '6px 16px', borderRadius: 20, fontSize: 13, fontWeight: 600, cursor: 'pointer',
+              border: activeBotId === 'all' ? '2px solid #4f46e5' : '1px solid #e2e8f0',
+              background: activeBotId === 'all' ? '#4f46e5' : '#fff',
+              color: activeBotId === 'all' ? '#fff' : '#64748b',
+              transition: 'all .15s',
+            }}
+          >
+            All Bots
+            <span style={{
+              marginLeft: 6, fontSize: 11, fontWeight: 700,
+              background: activeBotId === 'all' ? 'rgba(255,255,255,.25)' : '#f1f5f9',
+              color: activeBotId === 'all' ? '#fff' : '#64748b',
+              borderRadius: 10, padding: '1px 7px',
+            }}>{sources.length}</span>
+          </button>
+          {bots.map((b: any) => {
+            const count = sources.filter(s => s.bot_id === b.id).length
+            const active = activeBotId === b.id
+            return (
+              <button
+                key={b.id}
+                onClick={() => setActiveBotId(b.id)}
+                style={{
+                  padding: '6px 16px', borderRadius: 20, fontSize: 13, fontWeight: 600, cursor: 'pointer',
+                  border: active ? '2px solid #4f46e5' : '1px solid #e2e8f0',
+                  background: active ? '#4f46e5' : '#fff',
+                  color: active ? '#fff' : '#374151',
+                  transition: 'all .15s',
+                  display: 'flex', alignItems: 'center', gap: 6,
+                }}
+              >
+                <span style={{
+                  width: 8, height: 8, borderRadius: '50%', flexShrink: 0,
+                  background: active ? 'rgba(255,255,255,.6)' : '#4f46e5',
+                }} />
+                {b.name}
+                <span style={{
+                  fontSize: 11, fontWeight: 700,
+                  background: active ? 'rgba(255,255,255,.25)' : '#f1f5f9',
+                  color: active ? '#fff' : '#64748b',
+                  borderRadius: 10, padding: '1px 7px',
+                }}>{count}</span>
+              </button>
+            )
+          })}
+        </div>
+      )}
 
       {/* Stats */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12, marginBottom: 24 }}>
@@ -250,20 +313,22 @@ export default function SourcesPage() {
       {/* List */}
       {isLoading ? (
         <div style={{ padding: 60, textAlign: 'center', color: '#94a3b8' }}>Loading…</div>
-      ) : sources.length === 0 ? (
+      ) : botSources.length === 0 ? (
         <div className="card" style={{ padding: 60, textAlign: 'center' }}>
           <div style={{ fontSize: 40, marginBottom: 12 }}>📚</div>
-          <div style={{ fontWeight: 700, color: '#0f172a', marginBottom: 6 }}>No knowledge sources yet</div>
+          <div style={{ fontWeight: 700, color: '#0f172a', marginBottom: 6 }}>
+            {activeBotId !== 'all'
+              ? `No knowledge sources for ${botMap[activeBotId] ?? 'this bot'} yet`
+              : 'No knowledge sources yet'}
+          </div>
           <p style={{ color: '#64748b', fontSize: 13.5, marginBottom: 20, maxWidth: 380, margin: '0 auto 20px' }}>
             Add text, FAQs, upload a PDF, or crawl your website so your bot can answer questions.
           </p>
-          {canEdit && <button
-            className="btn btn-primary btn-sm"
-            style={{ fontWeight: 600 }}
-            onClick={() => setShowModal(true)}
-          >
-            + Add Source
-          </button>}
+          {canEdit && (
+            <button className="btn btn-primary btn-sm" style={{ fontWeight: 600 }} onClick={openModal}>
+              + Add Source
+            </button>
+          )}
         </div>
       ) : filtered.length === 0 ? (
         <div className="card" style={{ padding: 40, textAlign: 'center', color: '#94a3b8' }}>
@@ -380,6 +445,24 @@ export default function SourcesPage() {
                         >
                           {s.status === 'disabled' ? 'Enable' : 'Disable'}
                         </button>
+                        {canEdit && (
+                          <button
+                            onClick={() => {
+                              if (window.confirm(`Delete "${s.name}"? This removes all its indexed content and cannot be undone.`)) {
+                                deleteSource.mutate(s.id)
+                              }
+                            }}
+                            disabled={deleteSource.isPending}
+                            title="Permanently delete this source"
+                            style={{
+                              background: '#fef2f2', border: 'none', borderRadius: 7,
+                              padding: '5px 10px', fontSize: 12, fontWeight: 600,
+                              color: '#dc2626', cursor: 'pointer',
+                            }}
+                          >
+                            Delete
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>

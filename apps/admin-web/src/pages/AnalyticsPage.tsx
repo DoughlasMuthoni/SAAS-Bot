@@ -1,8 +1,13 @@
+import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import api from '../lib/api'
 import { useWorkspaceId } from '../hooks/useWorkspaceId'
+import BotTabBar from '../components/BotTabBar'
+
+interface Bot { id: string; name: string; brand_color: string }
 
 interface DailyUsage { date: string; conversations: number; messages: number }
+interface LeadDaily { date: string; count: number }
 interface QueryFrequency { query: string; count: number }
 interface Overview {
   total_conversations: number
@@ -11,6 +16,7 @@ interface Overview {
   lead_count: number
   top_queries: QueryFrequency[]
   usage_by_day: DailyUsage[]
+  leads_by_day: LeadDaily[]
 }
 
 const STATS = [
@@ -42,10 +48,22 @@ const STATS = [
 
 export default function AnalyticsPage() {
   const workspaceId = useWorkspaceId()
+  const [activeBotId, setActiveBotId] = useState('all')
+  const [chartMetric, setChartMetric] = useState<'conversations' | 'messages'>('conversations')
+
+  const { data: bots = [] } = useQuery<Bot[]>({
+    queryKey: ['bots', workspaceId],
+    queryFn: () => api.get(`/bots?workspace_id=${workspaceId}`).then(r => r.data),
+    enabled: !!workspaceId,
+  })
 
   const { data, isLoading } = useQuery<Overview>({
-    queryKey: ['analytics', workspaceId],
-    queryFn: () => api.get(`/analytics/overview?workspace_id=${workspaceId}`).then(r => r.data),
+    queryKey: ['analytics', workspaceId, activeBotId],
+    queryFn: () => {
+      const params = new URLSearchParams({ workspace_id: workspaceId })
+      if (activeBotId !== 'all') params.set('bot_id', activeBotId)
+      return api.get(`/analytics/overview?${params}`).then(r => r.data)
+    },
     enabled: !!workspaceId,
     refetchInterval: 60_000,
   })
@@ -58,6 +76,9 @@ export default function AnalyticsPage() {
 
   const days = [...(data?.usage_by_day ?? [])].reverse().slice(-14)
   const maxConvs = Math.max(...days.map(d => d.conversations), 1)
+  const maxMsgs = Math.max(...days.map(d => d.messages), 1)
+  const leadDays = [...(data?.leads_by_day ?? [])].reverse().slice(-14)
+  const maxLeads = Math.max(...leadDays.map(d => d.count), 1)
 
   const resolvedRate = data
     ? data.total_conversations > 0
@@ -68,10 +89,17 @@ export default function AnalyticsPage() {
   return (
     <div>
       {/* Header */}
-      <div style={{ marginBottom: '1.75rem' }}>
+      <div style={{ marginBottom: '1.25rem' }}>
         <h4 style={{ margin: 0, fontWeight: 800, color: '#0f172a', fontSize: '1.3rem' }}>Analytics</h4>
         <p style={{ margin: '4px 0 0', color: '#64748b', fontSize: 14 }}>Last 30 days · updates every minute</p>
       </div>
+
+      {/* Bot filter tabs */}
+      <BotTabBar
+        bots={bots}
+        activeId={activeBotId}
+        onChange={setActiveBotId}
+      />
 
       {/* Stat Cards */}
       <div className="row g-3 mb-4">
@@ -89,19 +117,32 @@ export default function AnalyticsPage() {
       </div>
 
       <div className="row g-4">
-        {/* Daily conversations chart */}
+        {/* Daily chart with metric toggle */}
         <div className="col-lg-8">
           <div className="card p-4" style={{ height: '100%' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20, gap: 12, flexWrap: 'wrap' }}>
               <div>
-                <div style={{ fontWeight: 700, color: '#0f172a', fontSize: 15 }}>Daily Conversations</div>
+                <div style={{ fontWeight: 700, color: '#0f172a', fontSize: 15 }}>
+                  Daily {chartMetric === 'conversations' ? 'Conversations' : 'Messages'}
+                </div>
                 <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>Last 14 days</div>
               </div>
-              {days.length > 0 && (
-                <div style={{ fontSize: 13, color: '#4f46e5', fontWeight: 600 }}>
-                  {days.reduce((a, d) => a + d.conversations, 0)} total
-                </div>
-              )}
+              <div style={{ display: 'flex', gap: 0, border: '1px solid #e2e8f0', borderRadius: 8, overflow: 'hidden', flexShrink: 0 }}>
+                {(['conversations', 'messages'] as const).map(m => (
+                  <button
+                    key={m}
+                    onClick={() => setChartMetric(m)}
+                    style={{
+                      padding: '5px 12px', fontSize: 12, fontWeight: 600, border: 'none', cursor: 'pointer',
+                      background: chartMetric === m ? '#4f46e5' : '#fff',
+                      color: chartMetric === m ? '#fff' : '#64748b',
+                      transition: 'all .15s', textTransform: 'capitalize',
+                    }}
+                  >
+                    {m}
+                  </button>
+                ))}
+              </div>
             </div>
 
             {days.length === 0 ? (
@@ -110,7 +151,11 @@ export default function AnalyticsPage() {
                 <span style={{ fontSize: 13 }}>No conversation data yet</span>
               </div>
             ) : (
-              <BarChart days={days} maxConvs={maxConvs} />
+              <BarChart
+                days={days}
+                maxConvs={chartMetric === 'conversations' ? maxConvs : maxMsgs}
+                metric={chartMetric}
+              />
             )}
           </div>
         </div>
@@ -141,6 +186,63 @@ export default function AnalyticsPage() {
                   <span style={{ fontSize: 13, fontWeight: 600, color: '#0f172a' }}>
                     {data?.unresolved_count ?? 0}
                   </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Leads over time */}
+        <div className="col-lg-8">
+          <div className="card p-4" style={{ height: '100%' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 }}>
+              <div>
+                <div style={{ fontWeight: 700, color: '#0f172a', fontSize: 15 }}>Leads Over Time</div>
+                <div style={{ fontSize: 12, color: '#64748b', marginTop: 2 }}>Last 14 days</div>
+              </div>
+              {leadDays.length > 0 && (
+                <div style={{ fontSize: 13, color: '#16a34a', fontWeight: 600 }}>
+                  {leadDays.reduce((a, d) => a + d.count, 0)} total
+                </div>
+              )}
+            </div>
+            {leadDays.length === 0 ? (
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: 180, color: '#94a3b8', gap: 8 }}>
+                <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87m-4-12a4 4 0 010 7.75"/></svg>
+                <span style={{ fontSize: 13 }}>No leads captured yet</span>
+              </div>
+            ) : (
+              <LeadsBarChart days={leadDays} maxLeads={maxLeads} />
+            )}
+          </div>
+        </div>
+
+        {/* Engagement metric */}
+        <div className="col-lg-4">
+          <div className="card p-4" style={{ height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+            <div style={{ fontWeight: 700, color: '#0f172a', fontSize: 15, marginBottom: 4 }}>Avg Engagement</div>
+            <div style={{ fontSize: 12, color: '#64748b', marginBottom: 24 }}>Messages per conversation</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: 48, fontWeight: 800, color: '#0891b2', lineHeight: 1 }}>
+                  {(data?.total_conversations ?? 0) > 0
+                    ? ((data?.total_messages ?? 0) / (data?.total_conversations ?? 1)).toFixed(1)
+                    : '—'}
+                </div>
+                <div style={{ fontSize: 13, color: '#64748b', marginTop: 6 }}>messages per session</div>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 12px', background: '#f8fafc', borderRadius: 8 }}>
+                  <span style={{ fontSize: 13, color: '#64748b' }}>Total sessions</span>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: '#0f172a' }}>{data?.total_conversations ?? 0}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 12px', background: '#f8fafc', borderRadius: 8 }}>
+                  <span style={{ fontSize: 13, color: '#64748b' }}>Total messages</span>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: '#0f172a' }}>{data?.total_messages ?? 0}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 12px', background: '#ecfeff', borderRadius: 8 }}>
+                  <span style={{ fontSize: 13, color: '#0891b2', fontWeight: 500 }}>Leads captured</span>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: '#0891b2' }}>{data?.lead_count ?? 0}</span>
                 </div>
               </div>
             </div>
@@ -209,41 +311,82 @@ export default function AnalyticsPage() {
   )
 }
 
-function BarChart({ days, maxConvs }: { days: DailyUsage[]; maxConvs: number }) {
+function BarChart({ days, maxConvs, metric }: { days: DailyUsage[]; maxConvs: number; metric: 'conversations' | 'messages' }) {
   const chartH = 160
+  const barColor = metric === 'conversations'
+    ? { from: '#4f46e5', to: '#818cf8', label: '#4f46e5' }
+    : { from: '#0891b2', to: '#67e8f9', label: '#0891b2' }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
       <div style={{ display: 'flex', alignItems: 'flex-end', gap: 4, height: chartH }}>
         {days.map((d, i) => {
-          const barH = maxConvs > 0 ? Math.max(4, Math.round((d.conversations / maxConvs) * chartH)) : 4
+          const val = metric === 'conversations' ? d.conversations : d.messages
+          const barH = maxConvs > 0 ? Math.max(4, Math.round((val / maxConvs) * chartH)) : 4
           return (
-            <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, height: '100%', justifyContent: 'flex-end', position: 'relative' }} title={`${d.date}: ${d.conversations} conversations`}>
-              {d.conversations > 0 && (
+            <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, height: '100%', justifyContent: 'flex-end', position: 'relative' }} title={`${d.date}: ${val} ${metric}`}>
+              {val > 0 && (
                 <div style={{
-                  position: 'absolute',
-                  bottom: barH + 4,
-                  fontSize: 10,
-                  color: '#4f46e5',
-                  fontWeight: 600,
-                  opacity: days.length <= 10 ? 1 : 0,
-                  whiteSpace: 'nowrap',
+                  position: 'absolute', bottom: barH + 4, fontSize: 10,
+                  color: barColor.label, fontWeight: 600,
+                  opacity: days.length <= 10 ? 1 : 0, whiteSpace: 'nowrap',
                 }}>
-                  {d.conversations}
+                  {val}
                 </div>
               )}
               <div style={{
-                width: '100%',
-                height: barH,
-                background: `linear-gradient(to top, #4f46e5, #818cf8)`,
-                borderRadius: '4px 4px 0 0',
-                transition: 'height .3s ease',
+                width: '100%', height: barH,
+                background: `linear-gradient(to top, ${barColor.from}, ${barColor.to})`,
+                borderRadius: '4px 4px 0 0', transition: 'height .3s ease',
               }} />
             </div>
           )
         })}
       </div>
-      {/* X axis labels */}
+      <div style={{ display: 'flex', gap: 4 }}>
+        {days.map((d, i) => {
+          const date = new Date(d.date)
+          const label = `${date.getMonth() + 1}/${date.getDate()}`
+          const show = days.length <= 10 || i % Math.ceil(days.length / 7) === 0
+          return (
+            <div key={i} style={{
+              flex: 1, fontSize: 10, color: '#94a3b8', textAlign: 'center',
+              opacity: show ? 1 : 0, whiteSpace: 'nowrap', overflow: 'hidden',
+            }}>{label}</div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+function LeadsBarChart({ days, maxLeads }: { days: LeadDaily[]; maxLeads: number }) {
+  const chartH = 160
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div style={{ display: 'flex', alignItems: 'flex-end', gap: 4, height: chartH }}>
+        {days.map((d, i) => {
+          const barH = maxLeads > 0 ? Math.max(4, Math.round((d.count / maxLeads) * chartH)) : 4
+          return (
+            <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, height: '100%', justifyContent: 'flex-end', position: 'relative' }} title={`${d.date}: ${d.count} leads`}>
+              {d.count > 0 && (
+                <div style={{
+                  position: 'absolute', bottom: barH + 4, fontSize: 10,
+                  color: '#16a34a', fontWeight: 600,
+                  opacity: days.length <= 10 ? 1 : 0, whiteSpace: 'nowrap',
+                }}>
+                  {d.count}
+                </div>
+              )}
+              <div style={{
+                width: '100%', height: barH,
+                background: 'linear-gradient(to top, #16a34a, #4ade80)',
+                borderRadius: '4px 4px 0 0', transition: 'height .3s ease',
+              }} />
+            </div>
+          )
+        })}
+      </div>
       <div style={{ display: 'flex', gap: 4 }}>
         {days.map((d, i) => {
           const date = new Date(d.date)

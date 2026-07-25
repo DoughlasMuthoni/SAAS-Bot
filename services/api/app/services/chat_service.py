@@ -2,7 +2,6 @@ import json
 import re
 import time
 from collections.abc import AsyncIterator
-from dataclasses import asdict, dataclass
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -18,15 +17,6 @@ from app.retrieval.retrieval_service import RetrievalService
 from app.utils.ids import generate_uuid
 
 logger = get_logger(__name__)
-
-
-@dataclass
-class Citation:
-    chunk_id: str
-    source_name: str
-    source_url: str | None
-    snippet: str
-    score: float
 
 
 class ChatService:
@@ -128,18 +118,6 @@ class ChatService:
             correct_event = json.dumps({"type": "correct", "data": full_response})
             yield f"data: {correct_event}\n\n"
 
-        # Build citations
-        citations = [
-            Citation(
-                chunk_id=c.chunk_id,
-                source_name=c.source_name,
-                source_url=c.source_url,
-                snippet=c.content[:200],
-                score=round(c.score, 4),
-            )
-            for c in retrieval_result.chunks
-        ]
-
         # Store assistant message (marker already stripped from full_response)
         await ConversationRepository.add_message(
             db,
@@ -191,7 +169,6 @@ class ChatService:
             "type": "metadata",
             "data": {
                 "conversation_id": conv.id,
-                "citations": [asdict(c) for c in citations],
                 "was_grounded": not retrieval_result.was_empty,
                 "unresolved": retrieval_result.was_empty,
                 "show_lead_form": show_lead_form,

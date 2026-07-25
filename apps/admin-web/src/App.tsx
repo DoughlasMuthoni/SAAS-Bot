@@ -15,6 +15,9 @@ import BillingPage from './pages/BillingPage'
 import PlansPage from './pages/PlansPage'
 import TeamPage from './pages/TeamPage'
 import ContentPage from './pages/ContentPage'
+import ReviewsPage from './pages/ReviewsPage'
+import ForgotPasswordPage from './pages/ForgotPasswordPage'
+import ResetPasswordPage from './pages/ResetPasswordPage'
 import PrivacyPolicyPage from './pages/PrivacyPolicyPage'
 import TermsOfServicePage from './pages/TermsOfServicePage'
 import SecurityPage from './pages/SecurityPage'
@@ -24,6 +27,8 @@ export default function App() {
     <Routes>
       <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<RegisterPage />} />
+      <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+      <Route path="/reset-password" element={<ResetPasswordPage />} />
       <Route
         path="/"
         element={
@@ -44,6 +49,7 @@ export default function App() {
         <Route path="billing" element={<BillingPage />} />
         <Route path="plans" element={<PlansPage />} />
         <Route path="content" element={<ContentPage />} />
+        <Route path="reviews" element={<ReviewsPage />} />
         <Route path="team" element={<TeamPage />} />
         <Route path="privacy" element={<PrivacyPolicyPage />} />
         <Route path="terms" element={<TermsOfServicePage />} />

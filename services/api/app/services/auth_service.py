@@ -1,4 +1,5 @@
 import re
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,6 +13,7 @@ from app.core.security import (
     verify_password,
 )
 from app.models import Organization, User, Workspace
+from app.models.plan import Plan
 from app.repositories.user_repository import UserRepository
 
 
@@ -47,7 +49,16 @@ class AuthService:
         )).scalar() or 0
         slug = slug_base if count == 0 else f"{slug_base}-{count}"
 
-        org = Organization(name=org_name, slug=slug, plan="free")
+        # Resolve trial_days for the default free plan
+        plan_result = await db.execute(select(Plan).where(Plan.slug == "free", Plan.is_active.is_(True)))
+        free_plan = plan_result.scalar_one_or_none()
+        trial_days = free_plan.trial_days if free_plan else 2
+
+        expires_at = (
+            datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(days=trial_days)
+            if trial_days > 0 else None
+        )
+        org = Organization(name=org_name, slug=slug, plan="free", plan_expires_at=expires_at)
         db.add(org)
         await db.flush()
 

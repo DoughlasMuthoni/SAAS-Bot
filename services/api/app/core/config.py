@@ -44,6 +44,14 @@ class Settings(BaseSettings):
     REDIS_URL: str = ""
     LOG_LEVEL: str = "INFO"
 
+    # Email / SMTP — leave SMTP_HOST blank to disable sending (reset links logged instead)
+    SMTP_HOST: str = ""
+    SMTP_PORT: int = 587
+    SMTP_TLS: bool = True
+    SMTP_USER: str = ""
+    SMTP_PASSWORD: str = ""
+    SMTP_FROM_EMAIL: str = "noreply@yourdomain.com"
+
     # Comma-separated list of emails that have platform superadmin access
     # These users can manage plans and see all organisations.
     SUPERADMIN_EMAILS: str = ""

@@ -6,8 +6,11 @@ from sqlalchemy import select
 
 from app.core.database import get_db
 from app.core.exceptions import AuthenticationError
+from app.core.logging import get_logger
 from app.models import Lead, Organization
 from app.models.plan import Plan
+from app.models.user import User
+from app.models.workspace import Workspace
 from app.repositories.bot_repository import BotRepository
 from app.schemas.chat import (
     ChatRequest,
@@ -17,9 +20,12 @@ from app.schemas.chat import (
     WidgetConfigResponse,
 )
 from app.services.chat_service import ChatService
+from app.services.email_service import send_lead_notification_email
 from app.services.plan_service import PlanService
 from app.services.session_service import SessionService
 from app.utils.ids import generate_uuid
+
+logger = get_logger(__name__)
 
 router = APIRouter(prefix="/widget", tags=["widget"])
 
@@ -69,6 +75,7 @@ async def create_session(body: SessionCreateRequest, db: AsyncSession = Depends(
     if org and org.suspended_at is not None:
         raise HTTPException(status_code=403, detail="This service is currently unavailable.")
 
+    await PlanService.check_plan_expiry(db, bot.org_id)
     await PlanService.check_conversation_limit(db, bot.org_id, bot.workspace_id)
 
     token, session_id = SessionService.create_session(bot.id, bot.workspace_id)
@@ -137,4 +144,34 @@ async def capture_lead(body: LeadCreateRequest, db: AsyncSession = Depends(get_d
     )
     db.add(lead)
     await db.commit()
+
+    # Send email notification to workspace admins (best-effort)
+    try:
+        bot = await BotRepository.get_by_id(db, session.bot_id, session.workspace_id)
+        ws_result = await db.execute(
+            select(Workspace).where(Workspace.id == session.workspace_id)
+        )
+        ws = ws_result.scalar_one_or_none()
+        if ws:
+            users_result = await db.execute(
+                select(User).where(
+                    User.org_id == ws.org_id,
+                    User.role.in_(["owner", "admin"]),
+                    User.is_active.is_(True),
+                    User.deleted_at.is_(None),
+                )
+            )
+            admin_emails = [u.email for u in users_result.scalars().all()]
+            await send_lead_notification_email(
+                to_emails=admin_emails,
+                lead_name=body.name or "Anonymous",
+                lead_email=body.email,
+                lead_phone=body.phone,
+                lead_message=body.message,
+                bot_name=bot.name if bot else "Your Bot",
+                page_url=body.page_url,
+            )
+    except Exception as exc:
+        logger.error("Lead notification failed", error=str(exc))
+
     return {"id": lead.id, "status": "created"}

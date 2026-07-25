@@ -12,6 +12,11 @@ class DailyUsage(BaseModel):
     messages: int
 
 
+class LeadDaily(BaseModel):
+    date: str
+    count: int
+
+
 class AnalyticsOverview(BaseModel):
     total_conversations: int
     total_messages: int
@@ -19,3 +24,4 @@ class AnalyticsOverview(BaseModel):
     lead_count: int
     top_queries: list[QueryFrequency]
     usage_by_day: list[DailyUsage]
+    leads_by_day: list[LeadDaily]
