@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { useNavigate } from 'react-router-dom'
+import { Navigate } from 'react-router-dom'
 import api from '../lib/api'
 import { useAuthStore } from '../lib/auth'
 
@@ -139,15 +139,11 @@ function ArrowBtn({ dir, disabled, onClick }: { dir: 'up' | 'down'; disabled: bo
 
 export default function PlansPage() {
   const qc = useQueryClient()
-  const navigate = useNavigate()
   const { user } = useAuthStore()
   const [tab, setTab] = useState<Tab>('plans')
 
-  useEffect(() => {
-    if (user && !user.is_superadmin) navigate('/dashboard', { replace: true })
-  }, [user, navigate])
-
-  if (!user || !user.is_superadmin) return null
+  if (!user) return null
+  if (!user.is_superadmin) return <Navigate to="/dashboard" replace />
 
   // ── Plan modal state ───────────────────────────────────────────
   const [showPlanModal, setShowPlanModal] = useState(false)
