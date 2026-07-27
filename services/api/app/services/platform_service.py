@@ -3,6 +3,7 @@ from decimal import Decimal
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.models import (
     Bot,
@@ -22,6 +23,7 @@ from app.schemas.platform import (
     InvoiceUpdate,
     OrgDetail,
     OrgListItem,
+    RecordPaymentRequest,
 )
 from app.models.base import generate_uuid
 
@@ -191,6 +193,8 @@ class PlatformService:
 
     @staticmethod
     def _invoice_to_response(inv: Invoice) -> InvoiceResponse:
+        amount_paid = inv.amount_paid or Decimal("0")
+        balance_due = max(inv.total - amount_paid, Decimal("0"))
         return InvoiceResponse(
             id=inv.id,
             org_id=inv.org_id,
@@ -205,6 +209,8 @@ class PlatformService:
             tax_rate=inv.tax_rate,
             tax_amount=inv.tax_amount,
             total=inv.total,
+            amount_paid=amount_paid,
+            balance_due=balance_due,
             paid_at=inv.paid_at.isoformat() if inv.paid_at else None,
             sent_at=inv.sent_at.isoformat() if inv.sent_at else None,
             created_at=inv.created_at.isoformat(),
@@ -222,6 +228,15 @@ class PlatformService:
         )
 
     @staticmethod
+    async def _fetch_invoice(db: AsyncSession, invoice_id: str) -> Invoice | None:
+        result = await db.execute(
+            select(Invoice)
+            .options(selectinload(Invoice.organization), selectinload(Invoice.items))
+            .where(Invoice.id == invoice_id, Invoice.deleted_at.is_(None))
+        )
+        return result.scalar_one_or_none()
+
+    @staticmethod
     def _compute_totals(items_data: list, tax_rate: Decimal) -> tuple[Decimal, Decimal, Decimal]:
         subtotal = sum(
             (item.quantity * item.unit_price) for item in items_data
@@ -233,25 +248,23 @@ class PlatformService:
 
     @staticmethod
     async def list_invoices(db: AsyncSession, org_id: str | None = None) -> list[InvoiceResponse]:
-        q = select(Invoice).where(Invoice.deleted_at.is_(None)).order_by(Invoice.created_at.desc())
+        q = (
+            select(Invoice)
+            .options(selectinload(Invoice.organization), selectinload(Invoice.items))
+            .where(Invoice.deleted_at.is_(None))
+            .order_by(Invoice.created_at.desc())
+        )
         if org_id:
             q = q.where(Invoice.org_id == org_id)
         result = await db.execute(q)
         invoices = result.scalars().all()
-        # Eager-load org names
-        for inv in invoices:
-            await db.refresh(inv, ["organization", "items"])
         return [PlatformService._invoice_to_response(inv) for inv in invoices]
 
     @staticmethod
     async def get_invoice(db: AsyncSession, invoice_id: str) -> InvoiceResponse | None:
-        result = await db.execute(
-            select(Invoice).where(Invoice.id == invoice_id, Invoice.deleted_at.is_(None))
-        )
-        inv = result.scalar_one_or_none()
+        inv = await PlatformService._fetch_invoice(db, invoice_id)
         if inv is None:
             return None
-        await db.refresh(inv, ["organization", "items"])
         return PlatformService._invoice_to_response(inv)
 
     @staticmethod
@@ -289,7 +302,7 @@ class PlatformService:
             db.add(item)
 
         await db.commit()
-        await db.refresh(inv, ["organization", "items"])
+        inv = await PlatformService._fetch_invoice(db, inv.id)
         return PlatformService._invoice_to_response(inv)
 
     @staticmethod
@@ -337,27 +350,25 @@ class PlatformService:
                 )
                 db.add(item)
         elif body.tax_rate is not None:
-            await db.refresh(inv, ["items"])
-            subtotal, tax_amount, total = PlatformService._compute_totals(inv.items, body.tax_rate)
+            items_result = await db.execute(
+                select(InvoiceItem).where(InvoiceItem.invoice_id == inv.id)
+            )
+            loaded_items = items_result.scalars().all()
+            subtotal, tax_amount, total = PlatformService._compute_totals(loaded_items, body.tax_rate)
             inv.tax_rate = body.tax_rate
             inv.subtotal = subtotal
             inv.tax_amount = tax_amount
             inv.total = total
 
         await db.commit()
-        await db.refresh(inv, ["organization", "items"])
+        inv = await PlatformService._fetch_invoice(db, inv.id)
         return PlatformService._invoice_to_response(inv)
 
     @staticmethod
     async def send_invoice(db: AsyncSession, invoice_id: str) -> InvoiceResponse | None:
-        result = await db.execute(
-            select(Invoice).where(Invoice.id == invoice_id, Invoice.deleted_at.is_(None))
-        )
-        inv = result.scalar_one_or_none()
+        inv = await PlatformService._fetch_invoice(db, invoice_id)
         if inv is None:
             return None
-
-        await db.refresh(inv, ["organization", "items"])
 
         # Gather recipient emails (all owners + admins of the org)
         users_result = await db.execute(
@@ -382,7 +393,7 @@ class PlatformService:
         if inv.status == "draft":
             inv.status = "sent"
         await db.commit()
-        await db.refresh(inv, ["organization", "items"])
+        inv = await PlatformService._fetch_invoice(db, invoice_id)
         return PlatformService._invoice_to_response(inv)
 
     @staticmethod
@@ -396,7 +407,38 @@ class PlatformService:
         inv.status = "paid"
         inv.paid_at = datetime.now(timezone.utc)
         await db.commit()
-        await db.refresh(inv, ["organization", "items"])
+        inv = await PlatformService._fetch_invoice(db, invoice_id)
+        return PlatformService._invoice_to_response(inv)
+
+    @staticmethod
+    async def record_payment(
+        db: AsyncSession, invoice_id: str, body: RecordPaymentRequest
+    ) -> InvoiceResponse | None:
+        inv = await PlatformService._fetch_invoice(db, invoice_id)
+        if inv is None:
+            return None
+        if inv.status == "paid":
+            raise ValueError("Invoice is already fully paid")
+        if body.amount <= Decimal("0"):
+            raise ValueError("Payment amount must be greater than zero")
+
+        amount_paid = (inv.amount_paid or Decimal("0")) + body.amount.quantize(Decimal("0.01"))
+        inv.amount_paid = amount_paid
+
+        if amount_paid >= inv.total:
+            inv.amount_paid = inv.total  # cap at total; no overpayment
+            inv.status = "paid"
+            inv.paid_at = datetime.now(timezone.utc)
+        else:
+            inv.status = "partial"
+
+        if body.note:
+            existing = inv.notes or ""
+            timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+            inv.notes = f"{existing}\n[{timestamp}] Payment of {inv.currency} {body.amount:,.2f} received. {body.note}".strip()
+
+        await db.commit()
+        inv = await PlatformService._fetch_invoice(db, invoice_id)
         return PlatformService._invoice_to_response(inv)
 
     @staticmethod

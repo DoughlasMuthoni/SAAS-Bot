@@ -1,11 +1,22 @@
+import base64
 import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from pathlib import Path
 
 from app.core.config import get_settings
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)
+
+_STATIC = Path(__file__).parent.parent / "static"
+
+def _logo_data_uri() -> str:
+    logo_path = _STATIC / "logo.jpeg"
+    if logo_path.exists():
+        data = base64.b64encode(logo_path.read_bytes()).decode()
+        return f"data:image/jpeg;base64,{data}"
+    return ""
 
 
 async def send_password_reset_email(to_email: str, reset_link: str) -> None:
@@ -164,64 +175,114 @@ async def send_invoice_email(
 
     rows_html = "".join(
         f"""<tr>
-          <td style="padding:8px 0;font-size:13px;color:#64748b;border-bottom:1px solid #f1f5f9">{item.description}</td>
-          <td style="padding:8px 0;font-size:13px;text-align:center;color:#64748b;border-bottom:1px solid #f1f5f9">{item.quantity}</td>
-          <td style="padding:8px 0;font-size:13px;text-align:right;color:#64748b;border-bottom:1px solid #f1f5f9">{invoice.currency} {item.unit_price:,.2f}</td>
-          <td style="padding:8px 0;font-size:13px;text-align:right;font-weight:600;border-bottom:1px solid #f1f5f9">{invoice.currency} {item.subtotal:,.2f}</td>
+          <td style="padding:9px 8px;font-size:13px;color:#0f172a;border-bottom:1px solid #f1f5f9">{item.description}</td>
+          <td style="padding:9px 8px;font-size:13px;text-align:center;color:#64748b;border-bottom:1px solid #f1f5f9">{item.quantity}</td>
+          <td style="padding:9px 8px;font-size:13px;text-align:right;color:#64748b;border-bottom:1px solid #f1f5f9">{invoice.currency} {item.unit_price:,.2f}</td>
+          <td style="padding:9px 8px;font-size:13px;text-align:right;font-weight:700;border-bottom:1px solid #f1f5f9">{invoice.currency} {item.subtotal:,.2f}</td>
         </tr>"""
         for item in invoice.items
     )
 
     tax_row = ""
     if float(invoice.tax_rate) > 0:
-        tax_row = f'<tr><td colspan="3" style="text-align:right;font-size:13px;color:#64748b;padding:6px 0">Tax ({invoice.tax_rate}%)</td><td style="text-align:right;font-size:13px;padding:6px 0">{invoice.currency} {invoice.tax_amount:,.2f}</td></tr>'
+        tax_row = f'<tr><td colspan="3" style="text-align:right;font-size:13px;color:#64748b;padding:5px 8px">Tax ({invoice.tax_rate}%)</td><td style="text-align:right;font-size:13px;padding:5px 8px">{invoice.currency} {invoice.tax_amount:,.2f}</td></tr>'
 
-    due_str = f"Due: {invoice.due_date}" if invoice.due_date else ""
+    logo_uri = _logo_data_uri()
+    logo_html = (
+        f'<img src="{logo_uri}" alt="DG ChatBot" style="height:40px;width:auto;object-fit:contain;display:block;margin-bottom:6px">'
+        if logo_uri else ""
+    )
+
+    notes_block = ""
+    if invoice.notes:
+        notes_block = (
+            '<div style="background:#f8fafc;border-left:3px solid #16a34a;padding:12px 16px;'
+            'font-size:13px;color:#64748b;border-radius:4px;margin-bottom:24px">'
+            '<strong style="display:block;margin-bottom:4px;font-size:11px;text-transform:uppercase;'
+            'letter-spacing:.05em;color:#0f172a">Notes / Payment Instructions</strong>'
+            f'{invoice.notes}</div>'
+        )
+
+    due_date_th = '<th style="font-size:11px;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em;padding:0 16px 4px 16px">Due Date</th>' if invoice.due_date else ''
+    due_date_td = f'<td style="font-size:13px;font-weight:700;padding:0 16px 16px 16px">{invoice.due_date}</td>' if invoice.due_date else ''
 
     html = f"""
-<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;max-width:560px;margin:0 auto;padding:32px;color:#0f172a">
-  <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:24px">
+<div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;max-width:580px;margin:0 auto;background:#fff;color:#0f172a">
+
+  <!-- Header band -->
+  <div style="background:#0f172a;padding:24px 32px;display:flex;align-items:center;justify-content:space-between">
     <div>
-      <h2 style="font-size:1.4rem;font-weight:800;margin:0 0 4px">Invoice {invoice.invoice_number}</h2>
-      <p style="color:#64748b;font-size:13px;margin:0">To: <strong>{org_name}</strong></p>
+      {logo_html}
+      <span style="color:#fff;font-size:13px;font-weight:700;letter-spacing:.02em">DG ChatBot</span>
     </div>
-    <span style="background:#dbeafe;color:#1d4ed8;padding:4px 12px;border-radius:20px;font-size:11px;font-weight:700;letter-spacing:.04em">
+    <span style="background:#16a34a;color:#fff;padding:4px 14px;border-radius:20px;font-size:11px;font-weight:700;letter-spacing:.05em">
       {invoice.status.upper()}
     </span>
   </div>
 
-  <div style="display:flex;gap:24px;margin-bottom:24px">
-    <div><span style="font-size:11px;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em">Issue Date</span><br><span style="font-weight:600;font-size:13px">{invoice.issue_date}</span></div>
-    {f'<div><span style="font-size:11px;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em">Due Date</span><br><span style="font-weight:600;font-size:13px">{invoice.due_date}</span></div>' if invoice.due_date else ''}
+  <!-- Body -->
+  <div style="padding:32px">
+    <table style="width:100%;margin-bottom:24px">
+      <tr>
+        <td>
+          <p style="font-size:11px;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em;margin:0 0 4px">Invoice</p>
+          <p style="font-size:18px;font-weight:800;margin:0;font-family:monospace">{invoice.invoice_number}</p>
+        </td>
+        <td style="text-align:right">
+          <p style="font-size:11px;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em;margin:0 0 4px">Billed To</p>
+          <p style="font-size:14px;font-weight:700;margin:0">{org_name}</p>
+        </td>
+      </tr>
+    </table>
+
+    <table style="width:100%;margin-bottom:24px;background:#f8fafc;border-radius:8px;padding:16px">
+      <tr>
+        <td style="font-size:11px;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em;padding:0 16px 4px 16px">Issue Date</td>
+        {due_date_th}
+        <td style="font-size:11px;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em;padding:0 16px 4px 16px">Currency</td>
+      </tr>
+      <tr>
+        <td style="font-size:13px;font-weight:700;padding:0 16px 16px 16px">{invoice.issue_date}</td>
+        {due_date_td}
+        <td style="font-size:13px;font-weight:700;padding:0 16px 16px 16px">{invoice.currency}</td>
+      </tr>
+    </table>
+
+    <table style="width:100%;border-collapse:collapse;margin-bottom:8px">
+      <thead>
+        <tr style="border-bottom:2px solid #0f172a">
+          <th style="text-align:left;font-size:10px;color:#64748b;text-transform:uppercase;letter-spacing:.06em;padding:0 8px 10px 0;font-weight:700">Description</th>
+          <th style="text-align:center;font-size:10px;color:#64748b;text-transform:uppercase;letter-spacing:.06em;padding:0 8px 10px;font-weight:700">Qty</th>
+          <th style="text-align:right;font-size:10px;color:#64748b;text-transform:uppercase;letter-spacing:.06em;padding:0 8px 10px;font-weight:700">Unit Price</th>
+          <th style="text-align:right;font-size:10px;color:#64748b;text-transform:uppercase;letter-spacing:.06em;padding:0 0 10px 8px;font-weight:700">Amount</th>
+        </tr>
+      </thead>
+      <tbody>{rows_html}</tbody>
+    </table>
+
+    <table style="width:220px;border-collapse:collapse;margin-left:auto;margin-bottom:24px">
+      <tr><td style="font-size:13px;color:#64748b;padding:5px 8px 5px 0">Subtotal</td><td style="font-size:13px;text-align:right;padding:5px 0">{invoice.currency} {invoice.subtotal:,.2f}</td></tr>
+      {tax_row}
+      <tr style="border-top:2px solid #0f172a">
+        <td style="font-size:15px;font-weight:800;padding:10px 8px 10px 0">Total</td>
+        <td style="font-size:15px;font-weight:800;text-align:right;padding:10px 0">{invoice.currency} {invoice.total:,.2f}</td>
+      </tr>
+    </table>
+
+    {notes_block}
+
+    <p style="font-size:13px;color:#64748b;margin:0 0 24px;line-height:1.6">
+      Please remit payment by <strong>{invoice.due_date or "the due date"}</strong>.
+      Questions? Reply to this email or contact us at
+      <a href="mailto:githuiddoughlas8@gmail.com" style="color:#16a34a;text-decoration:none">githuiddoughlas8@gmail.com</a>.
+    </p>
   </div>
 
-  <table style="width:100%;border-collapse:collapse;margin-bottom:16px">
-    <thead>
-      <tr style="border-bottom:2px solid #e2e8f0">
-        <th style="text-align:left;font-size:11px;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em;padding-bottom:8px">Description</th>
-        <th style="text-align:center;font-size:11px;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em;padding-bottom:8px">Qty</th>
-        <th style="text-align:right;font-size:11px;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em;padding-bottom:8px">Unit Price</th>
-        <th style="text-align:right;font-size:11px;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em;padding-bottom:8px">Amount</th>
-      </tr>
-    </thead>
-    <tbody>{rows_html}</tbody>
-  </table>
-
-  <table style="width:100%;border-collapse:collapse;margin-bottom:24px">
-    <tr><td colspan="3" style="text-align:right;font-size:13px;color:#64748b;padding:6px 0">Subtotal</td><td style="text-align:right;font-size:13px;padding:6px 0">{invoice.currency} {invoice.subtotal:,.2f}</td></tr>
-    {tax_row}
-    <tr style="border-top:2px solid #0f172a">
-      <td colspan="3" style="text-align:right;font-size:15px;font-weight:800;padding:10px 0">Total</td>
-      <td style="text-align:right;font-size:15px;font-weight:800;padding:10px 0">{invoice.currency} {invoice.total:,.2f}</td>
-    </tr>
-  </table>
-
-  {f'<p style="background:#f8fafc;border-left:3px solid #e2e8f0;padding:12px 16px;font-size:13px;color:#64748b;margin:0 0 24px;border-radius:4px">{invoice.notes}</p>' if invoice.notes else ''}
-
-  <p style="font-size:13px;color:#64748b;margin:0 0 8px">Please remit payment by {invoice.due_date or "the due date"}. Contact us if you have any questions.</p>
-
-  <hr style="border:none;border-top:1px solid #e2e8f0;margin:24px 0 16px">
-  <p style="color:#94a3b8;font-size:11px;margin:0">DG ChatBot · Douglas Githui Tech Creatives · Kenya</p>
+  <!-- Footer -->
+  <div style="background:#f8fafc;border-top:1px solid #e2e8f0;padding:16px 32px;display:flex;justify-content:space-between;align-items:center">
+    <span style="font-size:11px;color:#94a3b8">DG ChatBot &nbsp;·&nbsp; Douglas Githui Tech Creatives &nbsp;·&nbsp; Nairobi, Kenya</span>
+    <span style="font-size:11px;color:#94a3b8;font-family:monospace">{invoice.invoice_number}</span>
+  </div>
 </div>
 """
 

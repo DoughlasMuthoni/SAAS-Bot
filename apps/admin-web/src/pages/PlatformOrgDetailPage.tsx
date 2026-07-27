@@ -1,6 +1,18 @@
+import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { useParams, useNavigate } from 'react-router-dom'
 import api from '../lib/api'
+
+async function openPrintPage(invoiceId: string) {
+  const resp = await api.get(`/platform/invoices/${invoiceId}/print`, {
+    headers: { Accept: 'text/html' },
+    responseType: 'text',
+  })
+  const blob = new Blob([resp.data], { type: 'text/html' })
+  const url = URL.createObjectURL(blob)
+  const win = window.open(url, '_blank')
+  if (win) win.addEventListener('load', () => URL.revokeObjectURL(url), { once: true })
+}
 
 interface OrgDetail {
   id: string
@@ -28,14 +40,17 @@ interface Invoice {
   due_date: string | null
   currency: string
   total: number
+  amount_paid: number
+  balance_due: number
   sent_at: string | null
   paid_at: string | null
 }
 
 const STATUS_COLORS: Record<string, string> = {
-  draft: '#64748b',
-  sent: '#1d4ed8',
-  paid: '#15803d',
+  draft:   '#64748b',
+  sent:    '#1d4ed8',
+  partial: '#d97706',
+  paid:    '#15803d',
   overdue: '#dc2626',
 }
 
@@ -63,10 +78,34 @@ export default function PlatformOrgDetailPage() {
     enabled: !!orgId,
   })
 
-  const markPaid = useMutation({
-    mutationFn: (invoiceId: string) => api.post(`/platform/invoices/${invoiceId}/mark-paid`),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['platform-invoices', orgId] }),
+  const [payModal, setPayModal] = useState<{ inv: Invoice } | null>(null)
+  const [payAmount, setPayAmount] = useState('')
+  const [payNote, setPayNote] = useState('')
+  const [payError, setPayError] = useState('')
+
+  const recordPayment = useMutation({
+    mutationFn: ({ id, amount, note }: { id: string; amount: number; note: string }) =>
+      api.post(`/platform/invoices/${id}/record-payment`, { amount, note: note || null }).then(r => r.data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['platform-invoices', orgId] })
+      setPayModal(null); setPayAmount(''); setPayNote(''); setPayError('')
+    },
+    onError: (e: any) => setPayError(e?.response?.data?.detail || 'Failed to record payment'),
   })
+
+  const openPayModal = (inv: Invoice) => {
+    setPayModal({ inv })
+    setPayAmount(String(Number(inv.balance_due).toFixed(2)))
+    setPayNote(''); setPayError('')
+  }
+
+  const submitPayment = () => {
+    if (!payModal) return
+    const amount = parseFloat(payAmount)
+    if (isNaN(amount) || amount <= 0) { setPayError('Enter a valid amount greater than zero'); return }
+    if (amount > Number(payModal.inv.balance_due)) { setPayError(`Exceeds balance due (${payModal.inv.currency} ${Number(payModal.inv.balance_due).toFixed(2)})`); return }
+    recordPayment.mutate({ id: payModal.inv.id, amount, note: payNote })
+  }
 
   const sendInvoice = useMutation({
     mutationFn: (invoiceId: string) => api.post(`/platform/invoices/${invoiceId}/send`),
@@ -120,7 +159,7 @@ export default function PlatformOrgDetailPage() {
       </div>
 
       {/* Stats row */}
-      <div className="row row-cols-3 row-cols-md-6 g-3 mb-4">
+      <div className="row row-cols-2 row-cols-sm-3 row-cols-md-6 g-3 mb-4">
         {stat('Users', org.user_count)}
         {stat('Bots', org.bot_count)}
         {stat('Workspaces', org.workspace_count)}
@@ -185,16 +224,17 @@ export default function PlatformOrgDetailPage() {
               <tr>
                 <th>Invoice #</th>
                 <th>Status</th>
-                <th>Issue Date</th>
-                <th>Due Date</th>
-                <th>Amount</th>
+                <th className="d-none d-sm-table-cell">Issue Date</th>
+                <th className="d-none d-md-table-cell">Due Date</th>
+                <th className="text-end">Total</th>
+                <th className="text-end d-none d-md-table-cell">Balance</th>
                 <th></th>
               </tr>
             </thead>
             <tbody>
               {invoices.map(inv => (
                 <tr key={inv.id}>
-                  <td className="fw-medium font-monospace">{inv.invoice_number}</td>
+                  <td className="fw-medium font-monospace small">{inv.invoice_number}</td>
                   <td>
                     <span
                       className="badge rounded-pill"
@@ -208,60 +248,40 @@ export default function PlatformOrgDetailPage() {
                       {inv.status.toUpperCase()}
                     </span>
                   </td>
-                  <td className="small">{inv.issue_date}</td>
-                  <td className="small">{inv.due_date || '—'}</td>
-                  <td className="fw-semibold">{inv.currency} {Number(inv.total).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+                  <td className="small d-none d-sm-table-cell">{inv.issue_date}</td>
+                  <td className="small d-none d-md-table-cell">{inv.due_date || '—'}</td>
+                  <td className="text-end small fw-semibold">{inv.currency} {Number(inv.total).toLocaleString('en-US', { minimumFractionDigits: 2 })}</td>
+                  <td className="text-end small fw-semibold d-none d-md-table-cell"
+                    style={{ color: Number(inv.balance_due) > 0 ? '#dc2626' : '#15803d' }}>
+                    {inv.currency} {Number(inv.balance_due).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                  </td>
                   <td>
-                    <div style={{ display: 'flex', gap: 5 }}>
+                    <div className="d-flex flex-wrap gap-1">
                       <button
                         className="btn btn-sm btn-outline-secondary"
-                        onClick={() => window.open(`/api/v1/platform/invoices/${inv.id}/print`, '_blank')}
+                        onClick={() => openPrintPage(inv.id)}
                         title="Print / Download PDF"
                       >
                         PDF
                       </button>
                       {inv.status !== 'paid' && (
                         <>
-                          <button
-                            className="btn btn-sm btn-outline-primary"
-                            onClick={() => navigate(`/platform/invoices/${inv.id}/edit`)}
-                          >
-                            Edit
-                          </button>
-                          {inv.status !== 'paid' && (
-                            <button
-                              className="btn btn-sm btn-outline-info"
-                              disabled={sendInvoice.isPending}
-                              onClick={() => sendInvoice.mutate(inv.id)}
-                            >
-                              Send
+                          {inv.status === 'draft' && (
+                            <button className="btn btn-sm btn-outline-primary" onClick={() => navigate(`/platform/invoices/${inv.id}/edit`)}>
+                              Edit
                             </button>
                           )}
-                          <button
-                            className="btn btn-sm btn-success"
-                            disabled={markPaid.isPending}
-                            onClick={() => {
-                              if (window.confirm('Mark this invoice as paid?')) {
-                                markPaid.mutate(inv.id)
-                              }
-                            }}
-                          >
-                            Mark Paid
+                          <button className="btn btn-sm btn-outline-info" disabled={sendInvoice.isPending} onClick={() => sendInvoice.mutate(inv.id)}>
+                            Send
+                          </button>
+                          <button className="btn btn-sm btn-success" onClick={() => openPayModal(inv)}>
+                            + Pay
+                          </button>
+                          <button className="btn btn-sm btn-outline-danger" disabled={deleteInvoice.isPending}
+                            onClick={() => { if (window.confirm(`Delete invoice ${inv.invoice_number}?`)) deleteInvoice.mutate(inv.id) }}>
+                            Del
                           </button>
                         </>
-                      )}
-                      {inv.status !== 'paid' && (
-                        <button
-                          className="btn btn-sm btn-outline-danger"
-                          disabled={deleteInvoice.isPending}
-                          onClick={() => {
-                            if (window.confirm(`Delete invoice ${inv.invoice_number}?`)) {
-                              deleteInvoice.mutate(inv.id)
-                            }
-                          }}
-                        >
-                          Del
-                        </button>
                       )}
                     </div>
                   </td>
@@ -269,6 +289,70 @@ export default function PlatformOrgDetailPage() {
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {/* Record Payment Modal */}
+      {payModal && (
+        <div className="modal show d-block" style={{ background: 'rgba(0,0,0,0.4)' }}>
+          <div className="modal-dialog modal-dialog-centered">
+            <div className="modal-content">
+              <div className="modal-header">
+                <h5 className="modal-title">Record Payment — {payModal.inv.invoice_number}</h5>
+                <button className="btn-close" onClick={() => setPayModal(null)} />
+              </div>
+              <div className="modal-body">
+                <div className="mb-3 p-3 rounded" style={{ background: '#f8fafc', fontSize: 13 }}>
+                  <div className="d-flex justify-content-between mb-1">
+                    <span className="text-muted">Invoice Total</span>
+                    <span className="fw-semibold">{payModal.inv.currency} {Number(payModal.inv.total).toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
+                  </div>
+                  <div className="d-flex justify-content-between mb-1">
+                    <span className="text-muted">Already Paid</span>
+                    <span className="fw-semibold text-success">{payModal.inv.currency} {Number(payModal.inv.amount_paid).toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
+                  </div>
+                  <div className="d-flex justify-content-between" style={{ borderTop: '1px solid #e2e8f0', paddingTop: 6, marginTop: 4 }}>
+                    <span className="fw-bold">Balance Due</span>
+                    <span className="fw-bold text-danger">{payModal.inv.currency} {Number(payModal.inv.balance_due).toLocaleString('en-US', { minimumFractionDigits: 2 })}</span>
+                  </div>
+                </div>
+
+                {payError && <div className="alert alert-danger py-2 small">{payError}</div>}
+
+                <div className="mb-3">
+                  <label className="form-label">Amount Received ({payModal.inv.currency}) <span className="text-danger">*</span></label>
+                  <input
+                    type="number"
+                    className="form-control"
+                    min="0.01"
+                    step="0.01"
+                    value={payAmount}
+                    onChange={e => setPayAmount(e.target.value)}
+                    placeholder="0.00"
+                    autoFocus
+                  />
+                  <div className="form-text">Enter the full balance to mark as paid, or a partial amount.</div>
+                </div>
+
+                <div className="mb-2">
+                  <label className="form-label">Payment Reference / Note <span className="text-muted small">(optional)</span></label>
+                  <input
+                    type="text"
+                    className="form-control"
+                    value={payNote}
+                    onChange={e => setPayNote(e.target.value)}
+                    placeholder="e.g. M-Pesa ref: QK7XYZ, Bank transfer #1234"
+                  />
+                </div>
+              </div>
+              <div className="modal-footer">
+                <button className="btn btn-outline-secondary" onClick={() => setPayModal(null)}>Cancel</button>
+                <button className="btn btn-success" disabled={recordPayment.isPending} onClick={submitPayment}>
+                  {recordPayment.isPending ? 'Saving…' : 'Record Payment'}
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </div>

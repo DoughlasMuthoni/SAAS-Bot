@@ -14,7 +14,7 @@ class Invoice(Base, TimestampMixin, SoftDeleteMixin):
     org_id: Mapped[str] = mapped_column(String(36), ForeignKey("organizations.id"), nullable=False, index=True)
     invoice_number: Mapped[str] = mapped_column(String(50), nullable=False, unique=True)
     status: Mapped[str] = mapped_column(
-        Enum("draft", "sent", "paid", "overdue", name="invoice_status"),
+        Enum("draft", "sent", "partial", "paid", "overdue", name="invoice_status"),
         nullable=False,
         default="draft",
     )
@@ -26,6 +26,7 @@ class Invoice(Base, TimestampMixin, SoftDeleteMixin):
     tax_rate: Mapped[Decimal] = mapped_column(Numeric(5, 2), nullable=False, default=Decimal("0"))
     tax_amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False, default=Decimal("0"))
     total: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False, default=Decimal("0"))
+    amount_paid: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False, default=Decimal("0"))
     paid_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     sent_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 

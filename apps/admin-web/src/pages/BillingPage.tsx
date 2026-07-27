@@ -4,6 +4,38 @@ import { useWorkspaceId } from '../hooks/useWorkspaceId'
 import api from '../lib/api'
 import UsageMeter from '../components/UsageMeter'
 
+interface Invoice {
+  id: string
+  invoice_number: string
+  status: string
+  issue_date: string
+  due_date: string | null
+  currency: string
+  total: number
+  amount_paid: number
+  balance_due: number
+  paid_at: string | null
+}
+
+const STATUS_COLORS: Record<string, string> = {
+  draft:   '#64748b',
+  sent:    '#1d4ed8',
+  partial: '#d97706',
+  paid:    '#15803d',
+  overdue: '#dc2626',
+}
+
+async function openInvoicePrint(invoiceId: string) {
+  const resp = await api.get(`/billing/invoices/${invoiceId}/print`, {
+    headers: { Accept: 'text/html' },
+    responseType: 'text',
+  })
+  const blob = new Blob([resp.data], { type: 'text/html' })
+  const url = URL.createObjectURL(blob)
+  const win = window.open(url, '_blank')
+  if (win) win.addEventListener('load', () => URL.revokeObjectURL(url), { once: true })
+}
+
 type Currency = 'KES' | 'USD'
 
 interface ApiPlan {
@@ -104,9 +136,14 @@ export default function BillingPage() {
     refetchOnWindowFocus: true,
   })
 
+  const { data: invoices = [], isLoading: invoicesLoading } = useQuery<Invoice[]>({
+    queryKey: ['billing-invoices'],
+    queryFn: () => api.get('/billing/invoices').then(r => r.data),
+    staleTime: 30_000,
+  })
+
   const currentPlan: string = usage?.plan ?? 'free'
   const isOnFree = currentPlan === 'free'
-  const currentPlanData = plans.find(p => p.slug === currentPlan)
 
   return (
     <div style={{ maxWidth: 900, margin: '0 auto' }}>
@@ -412,6 +449,85 @@ export default function BillingPage() {
           </svg>
           info@douglasgithui.co.ke
         </a>
+      </div>
+
+      {/* ── Invoices ──────────────────────────────────────────────── */}
+      <div style={{ marginTop: '2.5rem' }}>
+        <div style={{ marginBottom: '1rem' }}>
+          <h5 style={{ fontWeight: 800, color: '#0f172a', margin: 0 }}>Your Invoices</h5>
+          <p style={{ margin: '4px 0 0', color: '#64748b', fontSize: 13 }}>
+            All invoices issued to your organisation. Download PDF for your records.
+          </p>
+        </div>
+
+        {invoicesLoading ? (
+          <div className="text-muted small py-3">Loading invoices…</div>
+        ) : invoices.length === 0 ? (
+          <div style={{
+            background: '#f8fafc', borderRadius: 12, border: '1px solid #e2e8f0',
+            padding: '2rem', textAlign: 'center', color: '#94a3b8', fontSize: 14,
+          }}>
+            No invoices yet. Invoices will appear here once issued by our team.
+          </div>
+        ) : (
+          <div className="card" style={{ overflow: 'hidden' }}>
+            <div className="table-responsive">
+              <table className="table table-hover align-middle mb-0" style={{ fontSize: 13 }}>
+                <thead className="table-light">
+                  <tr>
+                    <th>Invoice #</th>
+                    <th>Status</th>
+                    <th className="d-none d-sm-table-cell">Issue Date</th>
+                    <th className="d-none d-sm-table-cell">Due Date</th>
+                    <th className="text-end">Total</th>
+                    <th className="text-end d-none d-md-table-cell">Paid</th>
+                    <th className="text-end d-none d-md-table-cell">Balance</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {invoices.map(inv => (
+                    <tr key={inv.id}>
+                      <td className="fw-medium font-monospace small">{inv.invoice_number}</td>
+                      <td>
+                        <span className="badge rounded-pill" style={{
+                          background: `${STATUS_COLORS[inv.status] || '#64748b'}18`,
+                          color: STATUS_COLORS[inv.status] || '#64748b',
+                          fontWeight: 700, fontSize: 11,
+                        }}>
+                          {inv.status.toUpperCase()}
+                        </span>
+                      </td>
+                      <td className="small d-none d-sm-table-cell">{inv.issue_date}</td>
+                      <td className="small d-none d-sm-table-cell">{inv.due_date || '—'}</td>
+                      <td className="text-end small fw-semibold">
+                        {inv.currency} {Number(inv.total).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                      </td>
+                      <td className="text-end small d-none d-md-table-cell" style={{ color: Number(inv.amount_paid) > 0 ? '#15803d' : '#94a3b8' }}>
+                        {Number(inv.amount_paid) > 0
+                          ? `${inv.currency} ${Number(inv.amount_paid).toLocaleString('en-US', { minimumFractionDigits: 2 })}`
+                          : '—'}
+                      </td>
+                      <td className="text-end small fw-semibold d-none d-md-table-cell"
+                        style={{ color: Number(inv.balance_due) > 0 ? '#dc2626' : '#15803d' }}>
+                        {inv.currency} {Number(inv.balance_due).toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                      </td>
+                      <td>
+                        <button
+                          className="btn btn-sm btn-outline-secondary"
+                          onClick={() => openInvoicePrint(inv.id)}
+                          title="Download / Print PDF"
+                        >
+                          PDF
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )

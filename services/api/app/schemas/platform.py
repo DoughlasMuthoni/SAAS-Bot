@@ -75,6 +75,11 @@ class InvoiceUpdate(BaseModel):
     items: list[InvoiceLineCreate] | None = None
 
 
+class RecordPaymentRequest(BaseModel):
+    amount: Decimal
+    note: str | None = None
+
+
 class InvoiceResponse(BaseModel):
     id: str
     org_id: str
@@ -89,6 +94,8 @@ class InvoiceResponse(BaseModel):
     tax_rate: Decimal
     tax_amount: Decimal
     total: Decimal
+    amount_paid: Decimal
+    balance_due: Decimal
     paid_at: str | None
     sent_at: str | None
     created_at: str
