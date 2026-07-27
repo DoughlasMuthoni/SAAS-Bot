@@ -77,6 +77,8 @@ class UserMeResponse(BaseModel):
     role: str
     org_id: str
     is_active: bool
+    avatar_url: str | None = None
+    plan: str = "free"
     is_superadmin: bool = False
 
     model_config = {"from_attributes": True}

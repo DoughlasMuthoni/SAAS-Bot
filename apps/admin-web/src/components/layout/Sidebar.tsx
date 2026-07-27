@@ -162,14 +162,22 @@ export default function Sidebar({ isOpen, onClose }: Props) {
             onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
             title="Edit profile"
           >
-            <div style={{
-              width: 30, height: 30, borderRadius: '50%',
-              background: 'linear-gradient(135deg,#16a34a,#15803d)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: 12, fontWeight: 700, color: '#fff', flexShrink: 0,
-            }}>
-              {(user.full_name || user.email).charAt(0).toUpperCase()}
-            </div>
+            {(user as any).avatar_url ? (
+              <img
+                src={(user as any).avatar_url}
+                alt="avatar"
+                style={{ width: 30, height: 30, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }}
+              />
+            ) : (
+              <div style={{
+                width: 30, height: 30, borderRadius: '50%',
+                background: 'linear-gradient(135deg,#16a34a,#15803d)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: 12, fontWeight: 700, color: '#fff', flexShrink: 0,
+              }}>
+                {(user.full_name || user.email).charAt(0).toUpperCase()}
+              </div>
+            )}
             <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontSize: 12, color: '#e2e8f0', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {user.full_name || user.email}

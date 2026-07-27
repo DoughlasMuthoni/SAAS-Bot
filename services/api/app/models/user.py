@@ -20,6 +20,7 @@ class User(Base, TimestampMixin, SoftDeleteMixin):
         default="editor",
     )
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    avatar_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     reset_token: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
     reset_token_expires_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

@@ -8,6 +8,9 @@ interface User {
   full_name: string
   role: string
   org_id: string
+  is_active: boolean
+  avatar_url: string | null
+  plan: string
   is_superadmin: boolean
 }
 
@@ -45,6 +48,13 @@ export const useAuthStore = create<AuthState>()(
         set({ user: null, accessToken: null })
       },
     }),
-    { name: 'chatbot-auth', storage: { getItem: (k) => sessionStorage.getItem(k), setItem: (k, v) => sessionStorage.setItem(k, v), removeItem: (k) => sessionStorage.removeItem(k) } }
+    {
+      name: 'chatbot-auth',
+      storage: {
+        getItem: (k) => { const v = sessionStorage.getItem(k); return v ? JSON.parse(v) : null },
+        setItem: (k, v) => sessionStorage.setItem(k, JSON.stringify(v)),
+        removeItem: (k) => sessionStorage.removeItem(k),
+      },
+    }
   )
 )

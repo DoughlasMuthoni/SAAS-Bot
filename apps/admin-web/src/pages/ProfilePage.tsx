@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useAuthStore } from '../lib/auth'
 import api from '../lib/api'
@@ -17,12 +17,17 @@ interface UserMeResponse {
   role: string
   org_id: string
   is_active: boolean
+  avatar_url: string | null
+  plan: string
   is_superadmin: boolean
 }
 
 export default function ProfilePage() {
   const { user, setUser } = useAuthStore()
   const queryClient = useQueryClient()
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const isPaidPlan = user?.plan && user.plan !== 'free'
 
   // Profile info form
   const [fullName, setFullName] = useState(user?.full_name ?? '')
@@ -30,13 +35,21 @@ export default function ProfilePage() {
   const [infoMsg, setInfoMsg]   = useState<{ type: 'success' | 'error'; text: string } | null>(null)
 
   // Password form
-  const [currentPw, setCurrentPw]   = useState('')
-  const [newPw, setNewPw]           = useState('')
-  const [confirmPw, setConfirmPw]   = useState('')
-  const [pwMsg, setPwMsg]           = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+  const [currentPw, setCurrentPw] = useState('')
+  const [newPw, setNewPw]         = useState('')
+  const [confirmPw, setConfirmPw] = useState('')
+  const [pwMsg, setPwMsg]         = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+
+  // Avatar
+  const [avatarMsg, setAvatarMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(user?.avatar_url ?? null)
 
   useEffect(() => {
-    if (user) { setFullName(user.full_name); setEmail(user.email) }
+    if (user) {
+      setFullName(user.full_name)
+      setEmail(user.email)
+      setAvatarPreview(user.avatar_url ?? null)
+    }
   }, [user])
 
   const updateProfile = useMutation({
@@ -62,6 +75,48 @@ export default function ProfilePage() {
       setPwMsg({ type: 'error', text: e?.response?.data?.detail || 'Failed to change password.' }),
   })
 
+  const uploadAvatar = useMutation({
+    mutationFn: (file: File) => {
+      const form = new FormData()
+      form.append('file', file)
+      return api.post<UserMeResponse>('/auth/profile/avatar', form, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      }).then(r => r.data)
+    },
+    onSuccess: (data) => {
+      setUser(data)
+      setAvatarPreview(data.avatar_url)
+      queryClient.invalidateQueries({ queryKey: ['me'] })
+      setAvatarMsg({ type: 'success', text: 'Profile photo updated.' })
+    },
+    onError: (e: any) =>
+      setAvatarMsg({ type: 'error', text: e?.response?.data?.detail || 'Upload failed.' }),
+  })
+
+  const removeAvatar = useMutation({
+    mutationFn: () => api.delete<UserMeResponse>('/auth/profile/avatar').then(r => r.data),
+    onSuccess: (data) => {
+      setUser(data)
+      setAvatarPreview(null)
+      queryClient.invalidateQueries({ queryKey: ['me'] })
+      setAvatarMsg({ type: 'success', text: 'Profile photo removed.' })
+    },
+    onError: (e: any) =>
+      setAvatarMsg({ type: 'error', text: e?.response?.data?.detail || 'Failed to remove photo.' }),
+  })
+
+  const onFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setAvatarMsg(null)
+    // Local preview immediately
+    const reader = new FileReader()
+    reader.onload = () => setAvatarPreview(reader.result as string)
+    reader.readAsDataURL(file)
+    uploadAvatar.mutate(file)
+    e.target.value = ''
+  }
+
   const submitInfo = (e: React.FormEvent) => {
     e.preventDefault()
     setInfoMsg(null)
@@ -73,13 +128,13 @@ export default function ProfilePage() {
   const submitPassword = (e: React.FormEvent) => {
     e.preventDefault()
     setPwMsg(null)
-    if (!currentPw)      { setPwMsg({ type: 'error', text: 'Enter your current password.' }); return }
-    if (newPw.length < 8){ setPwMsg({ type: 'error', text: 'New password must be at least 8 characters.' }); return }
-    if (newPw !== confirmPw){ setPwMsg({ type: 'error', text: 'New passwords do not match.' }); return }
+    if (!currentPw)        { setPwMsg({ type: 'error', text: 'Enter your current password.' }); return }
+    if (newPw.length < 8)  { setPwMsg({ type: 'error', text: 'New password must be at least 8 characters.' }); return }
+    if (newPw !== confirmPw){ setPwMsg({ type: 'error', text: 'Passwords do not match.' }); return }
     changePassword.mutate({ current_password: currentPw, new_password: newPw })
   }
 
-  const initials = (user?.full_name ?? user?.email ?? '?')
+  const initials = (user?.full_name || user?.email || '?')
     .split(' ').map(w => w[0]).slice(0, 2).join('').toUpperCase()
 
   return (
@@ -93,34 +148,103 @@ export default function ProfilePage() {
         </p>
       </div>
 
-      {/* Avatar + role badge */}
-      <div className="d-flex align-items-center gap-3 mb-4">
-        <div style={{
-          width: 64, height: 64, borderRadius: '50%',
-          background: 'linear-gradient(135deg,#16a34a,#15803d)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontSize: 22, fontWeight: 800, color: '#fff', flexShrink: 0,
-        }}>
-          {initials}
+      {/* ── Avatar section ── */}
+      <div className="card mb-4">
+        <div className="card-header bg-white border-bottom py-3 px-4">
+          <h6 className="mb-0" style={{ fontWeight: 700 }}>Profile Photo</h6>
         </div>
-        <div>
-          <div style={{ fontWeight: 700, fontSize: 16, color: '#0f172a' }}>{user?.full_name}</div>
-          <div style={{ fontSize: 13, color: '#64748b' }}>{user?.email}</div>
-          <span style={{
-            display: 'inline-block', marginTop: 4,
-            background: '#f0fdf4', color: '#15803d',
-            fontSize: 11, fontWeight: 700, padding: '2px 10px',
-            borderRadius: 99, textTransform: 'capitalize', letterSpacing: '.04em',
-          }}>
-            {user?.role}{user?.is_superadmin ? ' · Superadmin' : ''}
-          </span>
+        <div className="card-body p-4">
+          <div className="d-flex align-items-center gap-4 flex-wrap">
+            {/* Avatar display */}
+            <div style={{ position: 'relative', flexShrink: 0 }}>
+              {avatarPreview ? (
+                <img
+                  src={avatarPreview}
+                  alt="Profile"
+                  style={{
+                    width: 80, height: 80, borderRadius: '50%',
+                    objectFit: 'cover', border: '3px solid #e2e8f0',
+                  }}
+                />
+              ) : (
+                <div style={{
+                  width: 80, height: 80, borderRadius: '50%',
+                  background: 'linear-gradient(135deg,#16a34a,#15803d)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: 28, fontWeight: 800, color: '#fff',
+                }}>
+                  {initials}
+                </div>
+              )}
+              {uploadAvatar.isPending && (
+                <div style={{
+                  position: 'absolute', inset: 0, borderRadius: '50%',
+                  background: 'rgba(0,0,0,.4)', display: 'flex',
+                  alignItems: 'center', justifyContent: 'center',
+                }}>
+                  <div className="spinner-border spinner-border-sm text-white" />
+                </div>
+              )}
+            </div>
+
+            {/* Actions */}
+            <div style={{ flex: 1 }}>
+              {avatarMsg && (
+                <div className={`alert alert-${avatarMsg.type === 'success' ? 'success' : 'danger'} py-2 small mb-2`}>
+                  {avatarMsg.text}
+                </div>
+              )}
+
+              {isPaidPlan ? (
+                <div className="d-flex gap-2 flex-wrap">
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp,image/gif"
+                    style={{ display: 'none' }}
+                    onChange={onFileChange}
+                  />
+                  <button
+                    className="btn btn-primary btn-sm"
+                    onClick={() => { setAvatarMsg(null); fileInputRef.current?.click() }}
+                    disabled={uploadAvatar.isPending}
+                  >
+                    {avatarPreview ? 'Change Photo' : 'Upload Photo'}
+                  </button>
+                  {avatarPreview && (
+                    <button
+                      className="btn btn-outline-danger btn-sm"
+                      onClick={() => { setAvatarMsg(null); removeAvatar.mutate() }}
+                      disabled={removeAvatar.isPending}
+                    >
+                      Remove
+                    </button>
+                  )}
+                  <div className="w-100 form-text">
+                    JPG, PNG, WebP or GIF · Max {20} MB
+                  </div>
+                </div>
+              ) : (
+                <div style={{
+                  background: '#fefce8', border: '1px solid #fef08a',
+                  borderRadius: 8, padding: '10px 14px', fontSize: 13,
+                }}>
+                  <span style={{ fontWeight: 600, color: '#854d0e' }}>Paid plan required</span>
+                  <span style={{ color: '#713f12' }}>
+                    {' '}— Profile photos are available on Pro and Enterprise plans.{' '}
+                  </span>
+                  <a href="/billing" style={{ color: '#16a34a', fontWeight: 600 }}>Upgrade →</a>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       </div>
 
       {/* ── Profile info ── */}
       <div className="card mb-4">
         <div className="card-header bg-white border-bottom py-3 px-4">
-          <h6 className="mb-0 fw-700" style={{ fontWeight: 700 }}>Profile Information</h6>
+          <h6 className="mb-0" style={{ fontWeight: 700 }}>Profile Information</h6>
         </div>
         <div className="card-body p-4">
           {infoMsg && (
@@ -150,13 +274,9 @@ export default function ProfilePage() {
                 placeholder="you@example.com"
                 required
               />
-              <div className="form-text">Changing your email will require you to log in again with the new address.</div>
+              <div className="form-text">Changing your email will require you to sign in again with the new address.</div>
             </div>
-            <button
-              type="submit"
-              className="btn btn-primary"
-              disabled={updateProfile.isPending}
-            >
+            <button type="submit" className="btn btn-primary" disabled={updateProfile.isPending}>
               {updateProfile.isPending ? 'Saving…' : 'Save Changes'}
             </button>
           </form>
@@ -211,18 +331,14 @@ export default function ProfilePage() {
                 <div className="invalid-feedback">Passwords do not match</div>
               )}
             </div>
-            <button
-              type="submit"
-              className="btn btn-outline-primary"
-              disabled={changePassword.isPending}
-            >
+            <button type="submit" className="btn btn-outline-primary" disabled={changePassword.isPending}>
               {changePassword.isPending ? 'Updating…' : 'Update Password'}
             </button>
           </form>
         </div>
       </div>
 
-      {/* ── Account info (read-only) ── */}
+      {/* ── Account details (read-only) ── */}
       <div className="card">
         <div className="card-header bg-white border-bottom py-3 px-4">
           <h6 className="mb-0" style={{ fontWeight: 700 }}>Account Details</h6>
@@ -239,7 +355,19 @@ export default function ProfilePage() {
             </div>
             <div className="col-sm-6">
               <div className="small text-muted mb-1">Role</div>
-              <div className="fw-semibold small" style={{ color: '#374151', textTransform: 'capitalize' }}>{user?.role}</div>
+              <div className="fw-semibold small" style={{ textTransform: 'capitalize', color: '#374151' }}>{user?.role}</div>
+            </div>
+            <div className="col-sm-6">
+              <div className="small text-muted mb-1">Plan</div>
+              <span style={{
+                display: 'inline-block',
+                background: user?.plan === 'free' ? '#f1f5f9' : '#f0fdf4',
+                color: user?.plan === 'free' ? '#64748b' : '#15803d',
+                fontSize: 12, fontWeight: 700, padding: '2px 10px',
+                borderRadius: 99, textTransform: 'capitalize',
+              }}>
+                {user?.plan ?? 'free'}
+              </span>
             </div>
             <div className="col-sm-6">
               <div className="small text-muted mb-1">Account Status</div>

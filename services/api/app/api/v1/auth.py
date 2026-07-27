@@ -1,7 +1,9 @@
 import secrets
 from datetime import datetime, timedelta
+from pathlib import Path
 
-from fastapi import APIRouter, Cookie, Depends, HTTPException, Response
+from fastapi import APIRouter, Cookie, Depends, File, HTTPException, Response, UploadFile
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_current_active_user
@@ -9,7 +11,7 @@ from app.core.config import get_settings
 from app.core.database import get_db
 from app.core.exceptions import AuthenticationError
 from app.core.security import hash_password
-from app.models import User
+from app.models import Organization, User
 from app.repositories.user_repository import UserRepository
 from app.schemas.auth import (
     ForgotPasswordRequest,
@@ -24,6 +26,21 @@ from app.services.auth_service import AuthService
 from app.services.email_service import send_password_reset_email
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+_STATIC = Path(__file__).parent.parent.parent / "static"
+_AVATARS_DIR = _STATIC / "avatars"
+_ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif"}
+_EXT_MAP = {"image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "image/gif": "gif"}
+
+
+async def _build_me(db: AsyncSession, user: User) -> UserMeResponse:
+    settings = get_settings()
+    result = await db.execute(select(Organization.plan).where(Organization.id == user.org_id))
+    plan = result.scalar_one_or_none() or "free"
+    data = UserMeResponse.model_validate(user)
+    data.plan = plan
+    data.is_superadmin = user.email.lower() in settings.superadmin_email_set
+    return data
 
 
 @router.post("/register", response_model=TokenResponse, status_code=201)
@@ -41,21 +58,12 @@ async def register(body: RegisterRequest, response: Response, db: AsyncSession =
 
     access_token, refresh_token = AuthService.create_tokens(user)
     settings = get_settings()
-
     response.set_cookie(
-        key="refresh_token",
-        value=refresh_token,
-        httponly=True,
-        secure=settings.is_production,
-        samesite="lax",
-        max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 86400,
-        path="/api/v1/auth",
+        key="refresh_token", value=refresh_token,
+        httponly=True, secure=settings.is_production, samesite="lax",
+        max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 86400, path="/api/v1/auth",
     )
-
-    return TokenResponse(
-        access_token=access_token,
-        expires_in=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
-    )
+    return TokenResponse(access_token=access_token, expires_in=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60)
 
 
 @router.post("/login", response_model=TokenResponse)
@@ -67,21 +75,12 @@ async def login(body: LoginRequest, response: Response, db: AsyncSession = Depen
 
     access_token, refresh_token = AuthService.create_tokens(user)
     settings = get_settings()
-
     response.set_cookie(
-        key="refresh_token",
-        value=refresh_token,
-        httponly=True,
-        secure=settings.is_production,
-        samesite="lax",
-        max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 86400,
-        path="/api/v1/auth",
+        key="refresh_token", value=refresh_token,
+        httponly=True, secure=settings.is_production, samesite="lax",
+        max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 86400, path="/api/v1/auth",
     )
-
-    return TokenResponse(
-        access_token=access_token,
-        expires_in=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
-    )
+    return TokenResponse(access_token=access_token, expires_in=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60)
 
 
 @router.post("/logout")
@@ -102,14 +101,12 @@ async def refresh(
         access_token = await AuthService.refresh_access_token(db, refresh_token)
     except AuthenticationError as e:
         raise HTTPException(status_code=401, detail=str(e))
-
     settings = get_settings()
     return TokenResponse(access_token=access_token, expires_in=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60)
 
 
 @router.post("/forgot-password")
 async def forgot_password(body: ForgotPasswordRequest, db: AsyncSession = Depends(get_db)):
-    # Always return 200 — never reveal whether the email exists
     user = await UserRepository.get_by_email(db, body.email)
     if user and user.is_active:
         token = secrets.token_urlsafe(32)
@@ -134,11 +131,8 @@ async def reset_password(body: ResetPasswordRequest, db: AsyncSession = Depends(
 
 
 @router.get("/me", response_model=UserMeResponse)
-async def me(user: User = Depends(get_current_active_user)):
-    settings = get_settings()
-    data = UserMeResponse.model_validate(user)
-    data.is_superadmin = user.email.lower() in settings.superadmin_email_set
-    return data
+async def me(db: AsyncSession = Depends(get_db), user: User = Depends(get_current_active_user)):
+    return await _build_me(db, user)
 
 
 @router.put("/profile", response_model=UserMeResponse)
@@ -147,17 +141,14 @@ async def update_profile(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_active_user),
 ):
-    from app.core.security import hash_password, verify_password
-    from sqlalchemy import select
+    from app.core.security import verify_password
 
-    # Password change requested — verify current password first
     if body.new_password:
         if not body.current_password:
             raise HTTPException(status_code=422, detail="Current password is required to set a new password")
         if not verify_password(body.current_password, user.hashed_password):
             raise HTTPException(status_code=422, detail="Current password is incorrect")
 
-    # Email change — check uniqueness
     if body.email and body.email.lower() != user.email.lower():
         existing = await UserRepository.get_by_email(db, body.email.lower())
         if existing and existing.id != user.id:
@@ -172,8 +163,59 @@ async def update_profile(
 
     await db.commit()
     await db.refresh(user)
+    return await _build_me(db, user)
+
+
+@router.post("/profile/avatar", response_model=UserMeResponse)
+async def upload_avatar(
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_active_user),
+):
+    # Plan gate — only paid plans
+    plan_result = await db.execute(select(Organization.plan).where(Organization.id == user.org_id))
+    plan = plan_result.scalar_one_or_none() or "free"
+    if plan == "free":
+        raise HTTPException(
+            status_code=403,
+            detail="Profile photos are available on paid plans. Upgrade to upload a photo.",
+        )
+
+    content_type = file.content_type or ""
+    if content_type not in _ALLOWED_IMAGE_TYPES:
+        raise HTTPException(status_code=422, detail="Only JPEG, PNG, WebP, or GIF images are accepted.")
 
     settings = get_settings()
-    data = UserMeResponse.model_validate(user)
-    data.is_superadmin = user.email.lower() in settings.superadmin_email_set
-    return data
+    max_bytes = settings.MAX_UPLOAD_MB * 1024 * 1024
+    content = await file.read()
+    if len(content) > max_bytes:
+        raise HTTPException(status_code=413, detail=f"Image must be under {settings.MAX_UPLOAD_MB} MB.")
+
+    # Save to static/avatars/{user_id}.{ext}
+    _AVATARS_DIR.mkdir(parents=True, exist_ok=True)
+    ext = _EXT_MAP[content_type]
+    avatar_path = _AVATARS_DIR / f"{user.id}.{ext}"
+
+    # Remove any previous avatar with a different extension
+    for old in _AVATARS_DIR.glob(f"{user.id}.*"):
+        old.unlink(missing_ok=True)
+
+    avatar_path.write_bytes(content)
+    user.avatar_url = f"/static/avatars/{user.id}.{ext}"
+    await db.commit()
+    await db.refresh(user)
+    return await _build_me(db, user)
+
+
+@router.delete("/profile/avatar", response_model=UserMeResponse)
+async def remove_avatar(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_active_user),
+):
+    if user.avatar_url:
+        for old in _AVATARS_DIR.glob(f"{user.id}.*"):
+            old.unlink(missing_ok=True)
+        user.avatar_url = None
+        await db.commit()
+        await db.refresh(user)
+    return await _build_me(db, user)
