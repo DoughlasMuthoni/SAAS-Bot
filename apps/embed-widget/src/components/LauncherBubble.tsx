@@ -8,8 +8,6 @@ interface Props {
   botName?: string
 }
 
-const DISMISS_KEY = 'chatbot_label_dismissed'
-
 function buildKeyframes(color: string) {
   const hex = color.replace('#', '')
   const r = parseInt(hex.slice(0, 2), 16)
@@ -36,15 +34,12 @@ export default function LauncherBubble({
   botName = 'Support',
 }: Props) {
   const [hovered, setHovered] = useState(false)
-  const [dismissed, setDismissed] = useState(() => {
-    try { return sessionStorage.getItem(DISMISS_KEY) === '1' } catch { return false }
-  })
+  const [dismissed, setDismissed] = useState(false)
   const isLeft = position === 'bottom-left'
 
   const dismiss = (e: React.MouseEvent) => {
     e.stopPropagation()
     setDismissed(true)
-    try { sessionStorage.setItem(DISMISS_KEY, '1') } catch {}
   }
 
   const showLabel = !isOpen && !dismissed
