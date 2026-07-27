@@ -25,6 +25,7 @@ import PlatformOrgsPage from './pages/PlatformOrgsPage'
 import PlatformOrgDetailPage from './pages/PlatformOrgDetailPage'
 import PlatformInvoicesPage from './pages/PlatformInvoicesPage'
 import PlatformInvoiceFormPage from './pages/PlatformInvoiceFormPage'
+import ProfilePage from './pages/ProfilePage'
 
 export default function App() {
   return (
@@ -58,6 +59,7 @@ export default function App() {
         <Route path="privacy" element={<PrivacyPolicyPage />} />
         <Route path="terms" element={<TermsOfServicePage />} />
         <Route path="security" element={<SecurityPage />} />
+        <Route path="profile" element={<ProfilePage />} />
         <Route path="platform/orgs" element={<PlatformOrgsPage />} />
         <Route path="platform/orgs/:orgId" element={<PlatformOrgDetailPage />} />
         <Route path="platform/invoices" element={<PlatformInvoicesPage />} />

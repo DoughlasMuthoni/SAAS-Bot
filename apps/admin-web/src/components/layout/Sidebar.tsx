@@ -151,22 +151,36 @@ export default function Sidebar({ isOpen, onClose }: Props) {
 
       {user && (
         <div className="cb-sidebar-footer">
-          <div style={{ padding: '8px 12px', display: 'flex', alignItems: 'center', gap: 8 }}>
+          <Link
+            to="/profile"
+            onClick={onClose}
+            style={{
+              padding: '8px 12px', display: 'flex', alignItems: 'center', gap: 8,
+              textDecoration: 'none', borderRadius: 8, transition: 'background .15s',
+            }}
+            onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,.06)')}
+            onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+            title="Edit profile"
+          >
             <div style={{
               width: 30, height: 30, borderRadius: '50%',
               background: 'linear-gradient(135deg,#16a34a,#15803d)',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               fontSize: 12, fontWeight: 700, color: '#fff', flexShrink: 0,
             }}>
-              {user.email.charAt(0).toUpperCase()}
+              {(user.full_name || user.email).charAt(0).toUpperCase()}
             </div>
-            <div style={{ minWidth: 0 }}>
+            <div style={{ minWidth: 0, flex: 1 }}>
               <div style={{ fontSize: 12, color: '#e2e8f0', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {user.full_name || user.email}
               </div>
               <div style={{ fontSize: 10, color: '#64748b', textTransform: 'capitalize' }}>{user.role}</div>
             </div>
-          </div>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth="2" strokeLinecap="round" style={{ flexShrink: 0 }}>
+              <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/>
+              <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/>
+            </svg>
+          </Link>
         </div>
       )}
     </nav>

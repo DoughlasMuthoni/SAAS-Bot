@@ -17,6 +17,7 @@ from app.schemas.auth import (
     RegisterRequest,
     ResetPasswordRequest,
     TokenResponse,
+    UpdateProfileRequest,
     UserMeResponse,
 )
 from app.services.auth_service import AuthService
@@ -134,6 +135,44 @@ async def reset_password(body: ResetPasswordRequest, db: AsyncSession = Depends(
 
 @router.get("/me", response_model=UserMeResponse)
 async def me(user: User = Depends(get_current_active_user)):
+    settings = get_settings()
+    data = UserMeResponse.model_validate(user)
+    data.is_superadmin = user.email.lower() in settings.superadmin_email_set
+    return data
+
+
+@router.put("/profile", response_model=UserMeResponse)
+async def update_profile(
+    body: UpdateProfileRequest,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_active_user),
+):
+    from app.core.security import hash_password, verify_password
+    from sqlalchemy import select
+
+    # Password change requested — verify current password first
+    if body.new_password:
+        if not body.current_password:
+            raise HTTPException(status_code=422, detail="Current password is required to set a new password")
+        if not verify_password(body.current_password, user.hashed_password):
+            raise HTTPException(status_code=422, detail="Current password is incorrect")
+
+    # Email change — check uniqueness
+    if body.email and body.email.lower() != user.email.lower():
+        existing = await UserRepository.get_by_email(db, body.email.lower())
+        if existing and existing.id != user.id:
+            raise HTTPException(status_code=409, detail="That email address is already in use")
+        user.email = body.email.lower()
+
+    if body.full_name:
+        user.full_name = body.full_name
+
+    if body.new_password:
+        user.hashed_password = hash_password(body.new_password)
+
+    await db.commit()
+    await db.refresh(user)
+
     settings = get_settings()
     data = UserMeResponse.model_validate(user)
     data.is_superadmin = user.email.lower() in settings.superadmin_email_set
