@@ -1,7 +1,7 @@
 """Integration tests for the widget chat endpoint: session, chat streaming, lead capture."""
 import json
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch, AsyncIterator
+from unittest.mock import AsyncMock, MagicMock, patch
 from httpx import AsyncClient
 
 from app.models import Domain

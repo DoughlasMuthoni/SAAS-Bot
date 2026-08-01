@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+from decimal import Decimal
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -82,6 +83,9 @@ class ConversationRepository:
         model_used: str | None = None,
         input_tokens: int | None = None,
         output_tokens: int | None = None,
+        cache_creation_input_tokens: int = 0,
+        cache_read_input_tokens: int = 0,
+        cost_usd: Decimal = Decimal("0"),
         latency_ms: int | None = None,
         was_grounded: bool = False,
     ) -> ConversationMessage:
@@ -96,6 +100,9 @@ class ConversationRepository:
             model_used=model_used,
             input_tokens=input_tokens,
             output_tokens=output_tokens,
+            cache_creation_input_tokens=cache_creation_input_tokens,
+            cache_read_input_tokens=cache_read_input_tokens,
+            cost_usd=cost_usd,
             latency_ms=latency_ms,
             was_grounded=was_grounded,
         )

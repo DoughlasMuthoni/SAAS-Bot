@@ -500,13 +500,16 @@ interface ApiPlan {
   features: string[] | null
 }
 
-// CTA config per plan slug — display concern only
-const PLAN_CTA: Record<string, { cta: string; ctaHref: string; ctaClass: string; popular: boolean; badge: string | null }> = {
-  free:       { cta: 'Get started free',  ctaHref: REGISTER_URL,                          ctaClass: 'btn-ghost', popular: false, badge: null },
-  pro:        { cta: 'Start Pro trial',   ctaHref: REGISTER_URL,                          ctaClass: 'btn-brand', popular: true,  badge: 'Most popular' },
-  enterprise: { cta: 'Contact sales',     ctaHref: 'mailto:info@doughlas.africa',          ctaClass: 'btn-ghost', popular: false, badge: null },
+// CTA + accent config per plan slug — display concern only
+const PLAN_CTA: Record<string, { cta: string; ctaHref: string; ctaClass: string; popular: boolean; badge: string | null; icon: string; accent: string }> = {
+  free:       { cta: 'Get started free',     ctaHref: REGISTER_URL,                 ctaClass: 'btn-ghost', popular: false, badge: null,            icon: '🌱', accent: '#64748b' },
+  starter:    { cta: 'Start with Starter',   ctaHref: REGISTER_URL,                 ctaClass: 'btn-ghost', popular: false, badge: null,            icon: '🚀', accent: '#1d4ed8' },
+  pro:        { cta: 'Start with Pro',       ctaHref: REGISTER_URL,                 ctaClass: 'btn-ghost', popular: false, badge: null,            icon: '⚙️', accent: '#0891b2' },
+  growth:     { cta: 'Start Growth trial',   ctaHref: REGISTER_URL,                 ctaClass: 'btn-brand', popular: true,  badge: 'Most popular', icon: '📈', accent: '#16a34a' },
+  business:   { cta: 'Start Business trial', ctaHref: REGISTER_URL,                 ctaClass: 'btn-ghost', popular: false, badge: null,            icon: '🏢', accent: '#7c3aed' },
+  enterprise: { cta: 'Contact sales',        ctaHref: 'mailto:info@doughlas.africa', ctaClass: 'btn-ghost', popular: false, badge: null,            icon: '🛡️', accent: '#0f172a' },
 }
-const DEFAULT_CTA = { cta: 'Get started', ctaHref: REGISTER_URL, ctaClass: 'btn-ghost', popular: false, badge: null }
+const DEFAULT_CTA = { cta: 'Get started', ctaHref: REGISTER_URL, ctaClass: 'btn-ghost', popular: false, badge: null, icon: '✨', accent: '#64748b' }
 
 function limitLabel(v: number) {
   return v === -1 ? 'Unlimited' : v.toLocaleString()
@@ -718,7 +721,7 @@ function LiveDemoSection() {
 
 function PricingCardSkeleton() {
   return (
-    <div className="col-md-4">
+    <div className="col">
       <div className="ds-pricing-card" style={{ minHeight: 360 }}>
         <div style={{ background: '#e2e8f0', borderRadius: 8, height: 20, width: '40%', marginBottom: 16, animation: 'pulse 1.5s ease-in-out infinite' }} />
         <div style={{ background: '#e2e8f0', borderRadius: 8, height: 44, width: '60%', marginBottom: 8 }} />
@@ -759,9 +762,9 @@ function Pricing() {
             </div>
           </div>
         </div>
-        <div className="row g-4 align-items-start justify-content-center">
+        <div className="row g-4 align-items-stretch justify-content-center row-cols-1 row-cols-sm-2 row-cols-lg-3">
           {loading
-            ? [1, 2, 3].map(i => <PricingCardSkeleton key={i} />)
+            ? [1, 2, 3, 4, 5, 6].map(i => <PricingCardSkeleton key={i} />)
             : plans.map((p) => {
                 const rawPrice = currency === 'KES' ? p.price_kes : p.price_usd
                 const isCustom = rawPrice === 0 && p.slug === 'enterprise'
@@ -784,9 +787,13 @@ function Pricing() {
                 ]
 
                 return (
-                  <div key={p.id} className="col-md-4">
-                    <div className={`ds-pricing-card${ui.popular ? ' popular' : ''}`}>
+                  <div key={p.id} className="col">
+                    <div
+                      className={`ds-pricing-card${ui.popular ? ' popular' : ''}`}
+                      style={{ ['--plan-accent' as any]: ui.accent }}
+                    >
                       {ui.badge && <div className="ds-plan-badge">{ui.badge}</div>}
+                      <div className="ds-plan-icon" aria-hidden="true">{ui.icon}</div>
                       <div className="ds-plan-name">{p.name}</div>
 
                       {isCustom ? (

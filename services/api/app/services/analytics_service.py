@@ -29,6 +29,10 @@ class AnalyticsService:
             select(func.count()).select_from(ConversationMessage).where(*msg_filters)
         )).scalar() or 0
 
+        total_cost_usd = (await db.execute(
+            select(func.coalesce(func.sum(ConversationMessage.cost_usd), 0)).where(*msg_filters)
+        )).scalar() or 0
+
         unresolved_filters = [UnresolvedQuery.workspace_id == workspace_id]
         if bot_id:
             unresolved_filters.append(UnresolvedQuery.bot_id == bot_id)
@@ -104,6 +108,7 @@ class AnalyticsService:
             total_messages=total_messages,
             unresolved_count=unresolved_count,
             lead_count=lead_count,
+            total_cost_usd=float(total_cost_usd),
             top_queries=top_queries,
             usage_by_day=usage_by_day,
             leads_by_day=leads_by_day,

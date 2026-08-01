@@ -2,12 +2,14 @@ import json
 import re
 import time
 from collections.abc import AsyncIterator
+from decimal import Decimal
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.core.exceptions import ForbiddenError
 from app.core.logging import get_logger
+from app.core.pricing import calculate_cost_usd
 from app.models import Bot, UnresolvedQuery, UsageEvent
 from app.prompts.prompt_builder import PromptBuilder
 from app.providers.anthropic_provider import get_anthropic_provider
@@ -100,6 +102,13 @@ class ChatService:
 
         latency_ms = int((time.monotonic() - start_time) * 1000)
         usage = provider.get_last_usage()
+        cost_usd = Decimal(str(calculate_cost_usd(
+            model=model,
+            input_tokens=usage.input_tokens if usage else 0,
+            output_tokens=usage.output_tokens if usage else 0,
+            cache_creation_input_tokens=usage.cache_creation_input_tokens if usage else 0,
+            cache_read_input_tokens=usage.cache_read_input_tokens if usage else 0,
+        )))
 
         # Strip source citation lines Claude appends (e.g. "📄 filename.pdf")
         _CITATION_RE = re.compile(r"\n?\s*\U0001F4C4[^\n]*", re.UNICODE)
@@ -130,6 +139,9 @@ class ChatService:
             model_used=model,
             input_tokens=usage.input_tokens if usage else None,
             output_tokens=usage.output_tokens if usage else None,
+            cache_creation_input_tokens=usage.cache_creation_input_tokens if usage else 0,
+            cache_read_input_tokens=usage.cache_read_input_tokens if usage else 0,
+            cost_usd=cost_usd,
             latency_ms=latency_ms,
             was_grounded=not retrieval_result.was_empty,
         )
@@ -158,6 +170,9 @@ class ChatService:
             event_type="chat_message",
             tokens_input=usage.input_tokens if usage else 0,
             tokens_output=usage.output_tokens if usage else 0,
+            cache_creation_input_tokens=usage.cache_creation_input_tokens if usage else 0,
+            cache_read_input_tokens=usage.cache_read_input_tokens if usage else 0,
+            cost_usd=cost_usd,
             latency_ms=latency_ms,
             model_used=model,
         )

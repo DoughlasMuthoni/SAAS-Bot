@@ -14,9 +14,16 @@ interface Overview {
   total_messages: number
   unresolved_count: number
   lead_count: number
+  total_cost_usd: number
   top_queries: QueryFrequency[]
   usage_by_day: DailyUsage[]
   leads_by_day: LeadDaily[]
+}
+
+function formatCostUsd(value: number): string {
+  if (value === 0) return '$0.00'
+  if (value < 0.01) return `$${value.toFixed(4)}`
+  return `$${value.toFixed(2)}`
 }
 
 const STATS = [
@@ -43,6 +50,12 @@ const STATS = [
     label: 'Leads Captured',
     color: '#16a34a', bg: '#f0fdf4',
     icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2" strokeLinecap="round"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87m-4-12a4 4 0 010 7.75"/></svg>,
+  },
+  {
+    key: 'total_cost_usd' as const,
+    label: 'Est. API Cost',
+    color: '#7c3aed', bg: '#f5f3ff',
+    icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#7c3aed" strokeWidth="2" strokeLinecap="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 000 7h5a3.5 3.5 0 010 7H6"/></svg>,
   },
 ]
 
@@ -104,11 +117,13 @@ export default function AnalyticsPage() {
       {/* Stat Cards */}
       <div className="row g-3 mb-4">
         {STATS.map((s) => (
-          <div key={s.key} className="col-6 col-lg-3">
+          <div key={s.key} className="col-6 col-lg">
             <div className="cb-stat">
               <div className="cb-stat-icon" style={{ background: s.bg }}>{s.icon}</div>
               <div>
-                <div className="cb-stat-value">{data?.[s.key] ?? 0}</div>
+                <div className="cb-stat-value">
+                  {s.key === 'total_cost_usd' ? formatCostUsd(data?.total_cost_usd ?? 0) : (data?.[s.key] ?? 0)}
+                </div>
                 <div className="cb-stat-label">{s.label}</div>
               </div>
             </div>

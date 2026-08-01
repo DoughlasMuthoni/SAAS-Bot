@@ -1,4 +1,6 @@
-from sqlalchemy import Boolean, Enum, ForeignKey, Integer, JSON, String, Text
+from decimal import Decimal
+
+from sqlalchemy import Boolean, Enum, ForeignKey, Integer, JSON, Numeric, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .base import Base, TimestampMixin, generate_uuid
@@ -19,6 +21,9 @@ class ConversationMessage(Base, TimestampMixin):
     model_used: Mapped[str | None] = mapped_column(String(100), nullable=True)
     input_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
     output_tokens: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    cache_creation_input_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    cache_read_input_tokens: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    cost_usd: Mapped[Decimal] = mapped_column(Numeric(12, 8), nullable=False, default=Decimal("0"))
     latency_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
     was_grounded: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 

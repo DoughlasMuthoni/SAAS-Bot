@@ -22,6 +22,7 @@ class AnalyticsOverview(BaseModel):
     total_messages: int
     unresolved_count: int
     lead_count: int
+    total_cost_usd: float
     top_queries: list[QueryFrequency]
     usage_by_day: list[DailyUsage]
     leads_by_day: list[LeadDaily]
